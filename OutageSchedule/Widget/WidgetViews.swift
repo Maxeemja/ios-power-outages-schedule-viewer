@@ -122,7 +122,7 @@ struct WidgetCard: View {
     }
 
     private var timeline: some View {
-        VStack(spacing: compact ? 3 : 4) {
+        VStack(spacing: compact ? 8 : 10) {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     HStack(spacing: 0) {
@@ -141,15 +141,18 @@ struct WidgetCard: View {
             }
             .frame(height: compact ? 14 : 12)
 
-            HStack {
-                ForEach(["00", "06", "12", "18", "24"], id: \.self) { tick in
+            HStack(spacing: 0) {
+                ForEach(compact ? ["00", "06", "12", "18", "24"] : ["00", "03", "06", "09", "12", "15", "18", "21", "24"], id: \.self) { tick in
                     Text(tick)
                         .font(.system(size: compact ? 7 : 9, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.54))
-                    if tick != "24" { Spacer(minLength: 0) }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity)
                 }
             }
         }
+        .padding(.horizontal, compact ? 8 : 12)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Графік на 24 години. Поточний статус: \(currentStatus.title)")
     }
@@ -159,11 +162,6 @@ struct WidgetCard: View {
             if compact {
                 Image(systemName: "arrow.clockwise")
                 Text(KyivTime.timeString(snapshot.fetchedAt))
-            }
-            if let schedule {
-                Spacer()
-                Text(schedule.displayLabel)
-                    .lineLimit(1)
             }
         }
         .font(.system(size: compact ? 8 : 9, weight: .medium))

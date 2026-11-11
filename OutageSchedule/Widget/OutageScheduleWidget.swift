@@ -12,7 +12,8 @@ struct OutageWidgetEntryView: View {
             compact: family == .systemSmall
         )
         .padding(.horizontal, family == .systemSmall ? 12 : 16)
-        .padding(.vertical, 10)
+        .padding(.top, family == .systemSmall ? 10 : 16)
+        .padding(.bottom, family == .systemSmall ? 10 : 4)
         .containerBackground(
             LinearGradient(
                 colors: [Color(red: 0.075, green: 0.085, blue: 0.12), Color(red: 0.025, green: 0.03, blue: 0.05)],

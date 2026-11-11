@@ -4,7 +4,7 @@ enum MockScheduleFactory {
     static func snapshot(now: Date = .now, selectedScheduleID: String = "line-a") -> ScheduleSnapshot {
         let dayStart = KyivTime.dayStart(containing: now)
         let schedules = [
-            makeSchedule(id: "line-a", label: "Графік 1 з 2", day: dayStart, boundaries: [
+            makeSchedule(id: "line-a", label: "Графік 1", day: dayStart, boundaries: [
                 (0, 120, .available),
                 (120, 240, .outage),
                 (240, 360, .possible),
@@ -13,16 +13,6 @@ enum MockScheduleFactory {
                 (840, 1080, .available),
                 (1080, 1260, .outage),
                 (1260, 1440, .available)
-            ]),
-            makeSchedule(id: "line-b", label: "Графік 2 з 2", day: dayStart, boundaries: [
-                (0, 180, .available),
-                (180, 300, .outage),
-                (300, 660, .available),
-                (660, 780, .possible),
-                (780, 900, .outage),
-                (900, 1200, .available),
-                (1200, 1320, .outage),
-                (1320, 1440, .unknown)
             ])
         ]
 

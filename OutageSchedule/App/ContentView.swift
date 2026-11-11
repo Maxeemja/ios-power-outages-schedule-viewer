@@ -23,21 +23,6 @@ struct ContentView: View {
                     WidgetCard(snapshot: snapshot, now: .now, compact: false)
                         .frame(height: 235)
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Варіант графіка")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        Picker("Варіант графіка", selection: $snapshot.selectedScheduleID) {
-                            ForEach(snapshot.schedules) { schedule in
-                                Text(schedule.displayLabel).tag(schedule.id)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: snapshot.selectedScheduleID) {
-                            persistAndReload()
-                        }
-                    }
-
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "info.circle.fill")
                             .foregroundStyle(Color.mint)
@@ -70,7 +55,17 @@ struct ContentView: View {
     private func restoreOrSeed() {
         let today = KyivTime.dayStart(containing: .now)
         if let saved = store.load(), saved.scheduleDate == today {
-            snapshot = saved
+            var restored = saved
+            if let firstSchedule = saved.schedules.first(where: { $0.id == "line-a" }) ?? saved.schedules.first {
+                var schedule = firstSchedule
+                schedule.displayLabel = "Графік 1"
+                restored.schedules = [schedule]
+                restored.selectedScheduleID = schedule.id
+            }
+            snapshot = restored
+            if restored != saved {
+                persistAndReload()
+            }
         } else {
             snapshot = MockScheduleFactory.snapshot(now: .now, selectedScheduleID: snapshot.selectedScheduleID)
             persistAndReload()
