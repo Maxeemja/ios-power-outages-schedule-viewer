@@ -23,6 +23,19 @@ struct ContentView: View {
                     WidgetCard(snapshot: snapshot, now: .now, compact: false)
                         .frame(height: 235)
 
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Демонстраційний графік")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        Picker("Графік", selection: selectedScheduleBinding) {
+                            ForEach(snapshot.schedules) { schedule in
+                                Text(schedule.displayLabel).tag(schedule.id)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .tint(.mint)
+                    }
+
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "info.circle.fill")
                             .foregroundStyle(Color.mint)
@@ -55,17 +68,7 @@ struct ContentView: View {
     private func restoreOrSeed() {
         let today = KyivTime.dayStart(containing: .now)
         if let saved = store.load(), saved.scheduleDate == today {
-            var restored = saved
-            if let firstSchedule = saved.schedules.first(where: { $0.id == "line-a" }) ?? saved.schedules.first {
-                var schedule = firstSchedule
-                schedule.displayLabel = "Графік 1"
-                restored.schedules = [schedule]
-                restored.selectedScheduleID = schedule.id
-            }
-            snapshot = restored
-            if restored != saved {
-                persistAndReload()
-            }
+            snapshot = saved
         } else {
             snapshot = MockScheduleFactory.snapshot(now: .now, selectedScheduleID: snapshot.selectedScheduleID)
             persistAndReload()
@@ -75,6 +78,16 @@ struct ContentView: View {
     private func persistAndReload() {
         sharedStorageAvailable = store.save(snapshot)
         WidgetCenter.shared.reloadTimelines(ofKind: OutageWidgetConstants.kind)
+    }
+
+    private var selectedScheduleBinding: Binding<String> {
+        Binding(
+            get: { snapshot.selectedScheduleID },
+            set: { scheduleID in
+                snapshot.selectedScheduleID = scheduleID
+                persistAndReload()
+            }
+        )
     }
 
     private var infoMessage: String {

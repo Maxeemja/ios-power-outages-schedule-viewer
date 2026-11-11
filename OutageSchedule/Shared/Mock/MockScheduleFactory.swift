@@ -13,6 +13,16 @@ enum MockScheduleFactory {
                 (840, 1080, .available),
                 (1080, 1260, .outage),
                 (1260, 1440, .available)
+            ]),
+            makeSchedule(id: "line-b", label: "Графік 2", day: dayStart, boundaries: [
+                (0, 180, .available),
+                (180, 300, .outage),
+                (300, 540, .available),
+                (540, 660, .possible),
+                (660, 900, .available),
+                (900, 1020, .outage),
+                (1020, 1320, .available),
+                (1320, 1440, .outage)
             ])
         ]
 
@@ -23,6 +33,17 @@ enum MockScheduleFactory {
             selectedScheduleID: schedules.contains(where: { $0.id == selectedScheduleID }) ? selectedScheduleID : schedules[0].id,
             scheduleDate: dayStart,
             fetchedAt: now
+        )
+    }
+
+    static func unavailableSnapshot(now: Date = .now, basedOn snapshot: ScheduleSnapshot? = nil) -> ScheduleSnapshot {
+        ScheduleSnapshot(
+            schemaVersion: 1,
+            address: snapshot?.address ?? SelectedAddress(city: "Київ", street: "вул. Демонстраційна", buildingNumber: "12"),
+            schedules: [],
+            selectedScheduleID: "",
+            scheduleDate: KyivTime.dayStart(containing: now),
+            fetchedAt: snapshot?.fetchedAt ?? .distantPast
         )
     }
 

@@ -31,24 +31,31 @@ struct OutageTimelineProvider: TimelineProvider {
             }
         }
 
-        var nextTick = Date(timeIntervalSince1970: (floor(now.timeIntervalSince1970 / 900) + 1) * 900)
+        // Refresh the static marker periodically; SwiftUI's timer text handles the countdown between entries.
+        var nextTick = Date(timeIntervalSince1970: (floor(now.timeIntervalSince1970 / 1800) + 1) * 1800)
         while nextTick < dayEnd {
             dates.insert(nextTick)
-            nextTick = nextTick.addingTimeInterval(15 * 60)
+            nextTick = nextTick.addingTimeInterval(30 * 60)
         }
 
         let entryDates = ([now] + dates.filter { $0 > now }.sorted()).map {
             OutageWidgetEntry(date: $0, snapshot: snapshot)
         }
-        let refreshDate = max(dayEnd.addingTimeInterval(60), now.addingTimeInterval(15 * 60))
+        let refreshDate = schedule == nil
+            ? now.addingTimeInterval(30 * 60)
+            : dayEnd.addingTimeInterval(60)
         completion(Timeline(entries: entryDates, policy: .after(refreshDate)))
     }
 
     private func currentSnapshot(now: Date = .now) -> ScheduleSnapshot {
         let today = KyivTime.dayStart(containing: now)
-        if let saved = store.load(), saved.scheduleDate == today {
-            return saved
+        guard let saved = store.load(), saved.scheduleDate == today else {
+            return MockScheduleFactory.unavailableSnapshot(now: now)
         }
-        return MockScheduleFactory.snapshot(now: now)
+        let age = now.timeIntervalSince(saved.fetchedAt)
+        guard age >= 0, age <= 24 * 60 * 60, saved.selectedSchedule != nil else {
+            return MockScheduleFactory.unavailableSnapshot(now: now, basedOn: saved)
+        }
+        return saved
     }
 }
