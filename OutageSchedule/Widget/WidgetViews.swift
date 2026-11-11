@@ -1,25 +1,8 @@
 import SwiftUI
 import WidgetKit
 
-struct OutageWidgetEntryView: View {
-    let entry: OutageWidgetEntry
-    @Environment(\.widgetFamily) private var family
-
-    var body: some View {
-        WidgetCard(
-            snapshot: entry.snapshot,
-            now: entry.date,
-            compact: family == .systemSmall
-        )
-        .containerBackground(
-            LinearGradient(
-                colors: [Color(red: 0.075, green: 0.085, blue: 0.12), Color(red: 0.025, green: 0.03, blue: 0.05)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            for: .widget
-        )
-    }
+enum OutageWidgetConstants {
+    static let kind = "OutageScheduleWidget"
 }
 
 struct WidgetCard: View {
@@ -39,27 +22,13 @@ struct WidgetCard: View {
     private var currentStatus: ScheduleStatus { interval?.status ?? .unknown }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: compact ? 5 : 6) {
             header
-            Spacer(minLength: 0)
             statusBlock
             timeline
             footer
         }
-        .padding(.horizontal, compact ? 12 : 18)
-        .padding(.vertical, compact ? 10 : 8)
-        .background(
-            LinearGradient(
-                colors: [Color(red: 0.10, green: 0.105, blue: 0.13), Color(red: 0.045, green: 0.05, blue: 0.07)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: compact ? 25 : 30, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: compact ? 25 : 30, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var header: some View {
@@ -80,7 +49,7 @@ struct WidgetCard: View {
                         .foregroundStyle(.white.opacity(0.62))
                 }
             } else {
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .top, spacing: 2) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(snapshot.address.city)
                             .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -125,7 +94,7 @@ struct WidgetCard: View {
             if let transition {
                 HStack(alignment: .firstTextBaseline, spacing: compact ? 5 : 8) {
                     Text(KyivTime.timeString(transition.date))
-                        .font(.system(size: compact ? 26 : 34, weight: .semibold, design: .rounded))
+                        .font(.system(size: compact ? 26 : 32, weight: .semibold, design: .rounded))
                         .tracking(compact ? -1 : -1.5)
                         .foregroundStyle(.white)
                         .minimumScaleFactor(0.7)
@@ -135,6 +104,7 @@ struct WidgetCard: View {
                         .font(.system(size: compact ? 10 : 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.mint)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 Text("Далі: \(transition.status.title.lowercased())")
                     .font(.system(size: compact ? 9 : 11))
@@ -152,7 +122,7 @@ struct WidgetCard: View {
     }
 
     private var timeline: some View {
-        VStack(spacing: compact ? 3 : 5) {
+        VStack(spacing: compact ? 3 : 4) {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     HStack(spacing: 0) {
@@ -169,14 +139,14 @@ struct WidgetCard: View {
                         .offset(x: max(0, min(geometry.size.width - 2.5, geometry.size.width * timeFraction - 1)))
                 }
             }
-            .frame(height: compact ? 14 : 17)
+            .frame(height: compact ? 14 : 12)
 
             HStack {
-                ForEach(compact ? ["00", "06", "12", "18", "24"] : ["00", "03", "06", "09", "12", "15", "18", "21", "24"], id: \.self) { tick in
+                ForEach(["00", "06", "12", "18", "24"], id: \.self) { tick in
                     Text(tick)
                         .font(.system(size: compact ? 7 : 9, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.54))
-                    if tick != (compact ? "24" : "24") { Spacer(minLength: 0) }
+                    if tick != "24" { Spacer(minLength: 0) }
                 }
             }
         }
@@ -186,8 +156,10 @@ struct WidgetCard: View {
 
     private var footer: some View {
         HStack(spacing: 5) {
-            Image(systemName: "arrow.clockwise")
-            Text(KyivTime.timeString(snapshot.fetchedAt))
+            if compact {
+                Image(systemName: "arrow.clockwise")
+                Text(KyivTime.timeString(snapshot.fetchedAt))
+            }
             if let schedule {
                 Spacer()
                 Text(schedule.displayLabel)

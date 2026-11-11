@@ -1,8 +1,31 @@
 import SwiftUI
 import WidgetKit
 
+struct OutageWidgetEntryView: View {
+    let entry: OutageWidgetEntry
+    @Environment(\.widgetFamily) private var family
+
+    var body: some View {
+        WidgetCard(
+            snapshot: entry.snapshot,
+            now: entry.date,
+            compact: family == .systemSmall
+        )
+        .padding(.horizontal, family == .systemSmall ? 12 : 16)
+        .padding(.vertical, 10)
+        .containerBackground(
+            LinearGradient(
+                colors: [Color(red: 0.075, green: 0.085, blue: 0.12), Color(red: 0.025, green: 0.03, blue: 0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            for: .widget
+        )
+    }
+}
+
 struct OutageScheduleWidget: Widget {
-    static let kind = "OutageScheduleWidget"
+    static let kind = OutageWidgetConstants.kind
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: Self.kind, provider: OutageTimelineProvider()) { entry in
@@ -11,6 +34,7 @@ struct OutageScheduleWidget: Widget {
         .configurationDisplayName("Графік світла")
         .description("Демонстраційний графік за адресою у Києві.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 

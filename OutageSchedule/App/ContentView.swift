@@ -79,7 +79,7 @@ struct ContentView: View {
 
     private func persistAndReload() {
         sharedStorageAvailable = store.save(snapshot)
-        WidgetCenter.shared.reloadTimelines(ofKind: OutageScheduleWidget.kind)
+        WidgetCenter.shared.reloadTimelines(ofKind: OutageWidgetConstants.kind)
     }
 
     private var infoMessage: String {
