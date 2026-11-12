@@ -17,6 +17,8 @@ DTEK is the authoritative target for individual Kyiv address schedules, but no s
 
 **Phase 3B cannot safely begin as an automatic provider integration.** It can begin only after approval of a scoped user-configured MVP, with the product labels and data-entry behavior described above. If the desired Phase 3B outcome is live authoritative schedules, wait until an official supported API/feed or an approved machine-access agreement is established and verified. Do not use undocumented endpoints, scrape website flows, or bypass WAF protections.
 
+**User approval received:** proceed with the user-configured manual MVP. The user chose a two-hour freshness window and approved the recommended defaults: complete on/off intervals, up to two schedule variants with explicit user selection, Kyiv city, and a link to the official DTEK shutdown page. The app must distinguish data entry from explicit confirmation that the schedule was checked at DTEK.
+
 ## Options assessed
 
 | Option | Accuracy | Address-level support | Technical feasibility | Reliability and maintenance | Decision |
@@ -51,15 +53,14 @@ The architecture proposed in [PHASE_3_ARCHITECTURE.md](PHASE_3_ARCHITECTURE.md) 
 
 Add the minimal `OutageDataSource` protocol, URLSession client, provider DTOs, validator/mapper, and app refresh coordinator in the main app target. Keep the widget on the shared normalized snapshot. A provider-backed schedule should preserve source identity and provider update time separately from local fetch time, with migration/tests for the existing schema. Keep manual configuration as a fallback only if product explicitly wants that mode.
 
-## Required user/product input before implementation
+## Approved Phase 3B scope
 
-Approve or reject the manual-entry MVP. If approved, confirm:
-
-1. Is the intended geography Kyiv City only?
-2. Will users enter full on/off intervals or only outage periods? Full intervals are clearer if the app must label power-on time; outage-only input needs unknown states outside entered windows.
-3. Should users enter one schedule or support multiple feed variants and select the applicable one?
-4. What is the freshness rule: expire at local end of schedule date, or require a user recheck at a chosen interval? DTEK says schedules can change at any time, so no automatic freshness guarantee exists.
-5. Which official handoff should be shown: DTEK shutdown page, DTEK chatbot, Kyiv Digital, or allow the user to choose? DTEK currently lists these as official channels.
+- Kyiv City only; the user enters the address manually.
+- Require complete, contiguous intervals from 00:00 to 24:00. The user marks each interval as scheduled availability, outage, or possible outage; gaps are never inferred as availability.
+- Support up to two schedule variants and require the user to select the applicable one.
+- Mark the schedule stale two hours after the user explicitly confirms they checked the official source. Editing alone must not claim a source check.
+- Link to DTEK's official shutdown page for manual lookup. No backend or automated provider integration is included.
+- Keep the widget offline-only; show the schedule only while it is fresh and for its effective date.
 
 No user personal account, API token, or address should be sent to an unapproved third party. Address persistence remains local in App Group storage unless scope/privacy review explicitly changes that.
 
@@ -100,4 +101,4 @@ Do not start until all of the following are met:
 
 Approve **user-assisted manual configuration** as the interim MVP if a working widget is needed before an official API is available. Treat its schedule as user-entered and dated, not automatically authoritative. Reject direct YASNO API integration for the current address-accuracy claim; defer DTEK automation pending a supported interface; do not add a backend or third-party scraper.
 
-**Stop here for approval.** Phase 3B implementation has not started.
+**Implementation status:** the approved manual MVP is implemented and the iOS Simulator build and unit tests pass. Manual visual verification in Xcode remains outstanding. Automatic DTEK/YASNO integration remains blocked on a supported, verified interface.

@@ -37,7 +37,7 @@ struct OutageScheduleWidget: Widget {
             OutageWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Графік світла")
-        .description("Демонстраційний графік за адресою у Києві.")
+        .description("Ваш вручну внесений графік за адресою у Києві.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

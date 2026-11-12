@@ -40,6 +40,40 @@ final class ScheduleDomainTests: XCTestCase {
         XCTAssertEqual(KyivTime.calendar().component(.hour, from: snapshot.schedules[0].intervals[0].start), 0)
     }
 
+    func testManualScheduleExpiresAfterTwoHours() {
+        var snapshot = MockScheduleFactory.snapshot(now: fixedDate())
+        snapshot.sourceKind = .userEntered
+        snapshot.lastVerifiedAt = fixedDate()
+
+        XCTAssertTrue(snapshot.isFreshManualSchedule(at: fixedDate().addingTimeInterval(2 * 60 * 60)))
+        XCTAssertFalse(snapshot.isFreshManualSchedule(at: fixedDate().addingTimeInterval(2 * 60 * 60 + 1)))
+        XCTAssertFalse(snapshot.isFreshManualSchedule(at: fixedDate().addingTimeInterval(-1)))
+    }
+
+    func testSnapshotWithoutManualMetadataRemainsDecodable() throws {
+        var snapshot = MockScheduleFactory.snapshot(now: fixedDate())
+        snapshot.sourceKind = .userEntered
+        snapshot.lastVerifiedAt = fixedDate()
+        let encoded = try XCTUnwrap(ScheduleStore.encode(snapshot))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "sourceKind")
+        object.removeValue(forKey: "lastVerifiedAt")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let restored = try XCTUnwrap(ScheduleStore.decode(legacyData))
+        XCTAssertNil(restored.sourceKind)
+        XCTAssertNil(restored.lastVerifiedAt)
+    }
+
+    func testKyivScheduleDayEndsAtNextLocalMidnightAcrossDST() throws {
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-03-28T22:00:00Z"))
+        let dayStart = KyivTime.dayStart(containing: date)
+        let dayEnd = KyivTime.date(on: dayStart, minuteOfDay: 1440)
+
+        XCTAssertEqual(KyivTime.calendar().component(.day, from: dayEnd), 30)
+        XCTAssertEqual(dayEnd.timeIntervalSince(dayStart), 23 * 60 * 60)
+    }
+
     private func fixedDate() -> Date {
         ISO8601DateFormatter().date(from: "2026-11-09T10:00:00Z")!
     }

@@ -43,7 +43,9 @@ enum MockScheduleFactory {
             schedules: [],
             selectedScheduleID: "",
             scheduleDate: KyivTime.dayStart(containing: now),
-            fetchedAt: snapshot?.fetchedAt ?? .distantPast
+            fetchedAt: snapshot?.fetchedAt ?? .distantPast,
+            sourceKind: snapshot?.sourceKind,
+            lastVerifiedAt: snapshot?.lastVerifiedAt
         )
     }
 

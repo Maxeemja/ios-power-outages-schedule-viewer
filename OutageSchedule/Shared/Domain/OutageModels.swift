@@ -10,7 +10,7 @@ struct SelectedAddress: Codable, Equatable {
     }
 }
 
-enum ScheduleStatus: String, Codable, CaseIterable {
+enum ScheduleStatus: String, Codable, CaseIterable, Hashable {
     case available
     case outage
     case possible
@@ -27,12 +27,16 @@ enum ScheduleStatus: String, Codable, CaseIterable {
 
     var shortTitle: String {
         switch self {
-        case .available: "Є світло"
-        case .outage: "Без світла"
-        case .possible: "Можливо"
+        case .available: "За графіком: світло"
+        case .outage: "За графіком: відкл."
+        case .possible: "Можл. за графіком"
         case .unknown: "Немає даних"
         }
     }
+}
+
+enum ScheduleSourceKind: String, Codable {
+    case userEntered
 }
 
 struct ScheduleInterval: Codable, Equatable, Identifiable {
@@ -55,9 +59,20 @@ struct ScheduleSnapshot: Codable, Equatable {
     var selectedScheduleID: String
     var scheduleDate: Date
     var fetchedAt: Date
+    // Optional so snapshots written before manual schedules remain decodable.
+    var sourceKind: ScheduleSourceKind? = nil
+    var lastVerifiedAt: Date? = nil
 
     var selectedSchedule: AddressSchedule? {
         schedules.first { $0.id == selectedScheduleID } ?? schedules.first
+    }
+
+    static let manualScheduleFreshness: TimeInterval = 2 * 60 * 60
+
+    func isFreshManualSchedule(at date: Date) -> Bool {
+        guard sourceKind == .userEntered, let lastVerifiedAt else { return false }
+        let age = date.timeIntervalSince(lastVerifiedAt)
+        return age >= 0 && age <= Self.manualScheduleFreshness
     }
 }
 
@@ -75,7 +90,21 @@ enum KyivTime {
     }
 
     static func date(on day: Date, minuteOfDay: Int) -> Date {
-        calendar().date(byAdding: .minute, value: minuteOfDay, to: dayStart(containing: day))!
+        let calendar = calendar()
+        let start = dayStart(containing: day)
+        if minuteOfDay <= 0 { return start }
+        if minuteOfDay >= 1440 {
+            return calendar.date(byAdding: .day, value: 1, to: start)!
+        }
+        return calendar.date(
+            bySettingHour: minuteOfDay / 60,
+            minute: minuteOfDay % 60,
+            second: 0,
+            of: start,
+            matchingPolicy: .nextTime,
+            repeatedTimePolicy: .first,
+            direction: .forward
+        ) ?? start
     }
 
     static func timeString(_ date: Date) -> String {

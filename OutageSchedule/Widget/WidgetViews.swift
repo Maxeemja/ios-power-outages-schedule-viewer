@@ -99,7 +99,7 @@ struct WidgetCard: View {
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 4) {
                     statusLabel
-                    Label(KyivTime.timeString(snapshot.fetchedAt), systemImage: "arrow.clockwise")
+                    Label(freshnessCaption, systemImage: "checkmark.circle")
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(secondaryText)
                         .lineLimit(1)
@@ -216,8 +216,23 @@ struct WidgetCard: View {
 
     private var freshnessText: String {
         if snapshot.fetchedAt == .distantPast { return "Очікуємо на дані" }
-        if schedule == nil { return "Застарілі дані · оновлено о \(KyivTime.timeString(snapshot.fetchedAt))" }
-        return "Оновлено о \(KyivTime.timeString(snapshot.fetchedAt))"
+        if schedule == nil {
+            if snapshot.sourceKind == .userEntered, let verified = snapshot.lastVerifiedAt {
+                return "Перевірте графік · остання перевірка о \(KyivTime.timeString(verified))"
+            }
+            return "Немає актуального графіка"
+        }
+        if snapshot.sourceKind == .userEntered, let verified = snapshot.lastVerifiedAt {
+            return "Введено вручну · перевірено о \(KyivTime.timeString(verified))"
+        }
+        return "Демонстраційні дані"
+    }
+
+    private var freshnessCaption: String {
+        guard snapshot.sourceKind == .userEntered, let verified = snapshot.lastVerifiedAt else {
+            return "Демо · не реальний графік"
+        }
+        return "Перевірено \(KyivTime.timeString(verified))"
     }
 
     private var timeFraction: CGFloat {
