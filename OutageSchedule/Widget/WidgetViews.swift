@@ -35,7 +35,7 @@ struct WidgetCard: View {
     private var smallLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(snapshot.address.city)
+                Text(snapshot.isYasnoGroupSchedule ? "Група YASNO" : (snapshot.address?.city ?? "Київ"))
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -44,11 +44,19 @@ struct WidgetCard: View {
             }
             .foregroundStyle(primaryText)
 
-            Text(snapshot.address.displayName)
+            Text(snapshot.isYasnoGroupSchedule ? snapshot.groupIdentity?.identifier ?? "" : (snapshot.address?.displayName ?? ""))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(secondaryText)
                 .lineLimit(1)
                 .padding(.top, 2)
+
+            if snapshot.isYasnoGroupSchedule {
+                Text("Group schedule; actual outages at your building or apartment may differ.")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundStyle(secondaryText)
+                    .lineLimit(2)
+                    .padding(.top, 2)
+            }
 
             Spacer(minLength: 8)
 
@@ -87,11 +95,11 @@ struct WidgetCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(snapshot.address.city)
+                    Text(snapshot.isYasnoGroupSchedule ? "Група YASNO · \(snapshot.groupIdentity?.identifier ?? "")" : (snapshot.address?.city ?? "Київ"))
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(primaryText)
                         .lineLimit(1)
-                    Text(snapshot.address.displayName)
+                    Text(snapshot.isYasnoGroupSchedule ? yasnoFreshnessLabel : (snapshot.address?.displayName ?? ""))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(secondaryText)
                         .lineLimit(1)
@@ -146,6 +154,12 @@ struct WidgetCard: View {
                 timeline
             } else {
                 unavailableTimeline
+            }
+            if snapshot.isYasnoGroupSchedule {
+                Text("Group schedule; actual outages at your building or apartment may differ.")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(secondaryText)
+                    .lineLimit(1)
             }
         }
     }
@@ -215,6 +229,7 @@ struct WidgetCard: View {
     }
 
     private var freshnessText: String {
+        if snapshot.isYasnoGroupSchedule { return yasnoFreshnessLabel }
         if snapshot.fetchedAt == .distantPast { return "Очікуємо на дані" }
         if schedule == nil {
             if snapshot.sourceKind == .userEntered, let verified = snapshot.lastVerifiedAt {
@@ -229,10 +244,23 @@ struct WidgetCard: View {
     }
 
     private var freshnessCaption: String {
+        if snapshot.isYasnoGroupSchedule { return yasnoFreshnessLabel }
         guard snapshot.sourceKind == .userEntered, let verified = snapshot.lastVerifiedAt else {
             return "Демо · не реальний графік"
         }
         return "Перевірено \(KyivTime.timeString(verified))"
+    }
+
+    private var yasnoFreshnessLabel: String {
+        if let waitingAt = snapshot.providerWaitingFetchedAt, waitingAt > snapshot.fetchedAt {
+            return "YASNO ще не опублікував графік"
+        }
+        return switch snapshot.providerFreshness(at: now) {
+        case .current: "YASNO · актуально"
+        case .stale: "YASNO · застаріло"
+        case .staleWithStrongWarning: "YASNO · понад 12 год"
+        case .unavailable, .invalidFutureTimestamp: "YASNO · немає актуальних даних"
+        }
     }
 
     private var timeFraction: CGFloat {

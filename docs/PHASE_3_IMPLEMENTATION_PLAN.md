@@ -1,115 +1,133 @@
-# Phase 3A Implementation Plan for Phase 3B
+# Phase 3 Implementation Plan: YASNO Group Schedule
 
-**Status:** Planning only. Phase 3B has not been approved or started. No source files or project configuration were changed for this plan.
+**Status:** Planning only. No Phase 3 provider implementation is authorized or started by this document revision.
+**Approved product semantics:** display a selected YASNO group schedule, never an address-specific or individually verified property schedule. See [research](PHASE_3_DATA_SOURCE_RESEARCH.md) and [architecture](PHASE_3_ARCHITECTURE.md).
 
-## Entry criteria
+## Entry conditions and mandatory scope
 
-Before implementation, verify a provider-supported machine interface for DTEK Kyiv address lookup and schedule retrieval. Record current live responses, authentication/access terms, rate limits, update metadata, timezone, multi-feed behavior, and sanitized fixtures. The current official page is address-specific, but current direct HTTP requests return an Incapsula challenge. Do not implement a scraper or edge-control workaround. If there is no approved interface, stop and ask for a product decision on whether to defer real data or change to an explicitly labeled group schedule.
+The product decisions are settled: user-direct group selection, 6/12-hour freshness policy, and continued user-facing manual mode. Phase 3 does not depend on DTEK address-specific integration. Before implementation, use sanitized YASNO fixtures and verify provider response shape; do not assume historical schema remains current. Keep network calls in the main app, retain last-known-good data on all failures, and keep the widget offline-only. Group choices must come from actual provider data where supported; do not invent a complete catalog.
 
-## Phase 3B steps
+Every app/widget real-data view must state that the displayed schedule belongs to the selected group and that actual outages for an individual building or apartment may differ. Address-to-group mapping and address-based inference are out of scope. No address-specific accuracy claim is allowed. Manual schedule mode remains available alongside YASNO mode; switching modes must preserve each mode’s data and never cause automatic refresh to overwrite manual data.
 
-### Step 1 — Confirm scope and provider contract
+### A. YASNO provider integration
 
-- Confirm the approved endpoint and access method, supported geographic scope, and one real address test path.
-- Capture sanitized fixtures for region/address suggestions, not-found response, normal schedule, no-schedule/waiting state, and multi-feed schedule if available.
-- Record provider update timestamp semantics and official meaning of every interval/status.
-- Decide whether this release handles one selected address or includes address search; confirm multi-feed selection UX.
+**Objective:** Add an app-only `OutageDataSource` implementation and remote client for the verified planned-outages endpoint and selected group.
 
-**Acceptance:** Provider interface is supported/authorized, reachable without bypassing edge controls, and has enough observed fields to map a schedule without inferred semantics.
+**Likely files/components:** new app service protocol/provider adapter and YASNO client under `OutageSchedule/App/...`; target membership/project file only if required. No widget network component.
 
-### Step 2 — Add DTO and client boundary
+**Dependencies:** sanitized fixture and verified request parameters/region/DSO selection policy grounded in provider metadata; direct group-selection model. Confirm group-key availability from the actual response before presenting choices.
 
-- Add the narrow `OutageDataSource` protocol and app-target provider implementation.
-- Add an injectable `URLSession` client with timeout, status/content-type checks, and typed transport/protocol errors.
-- Add Codable DTOs matching the approved real fixture only.
-- Treat challenge HTML, unexpected redirects/content types, and unknown schema as errors.
+**Acceptance criteria:** requests use the researched planned-outages route; region/operator values are not treated as permanent without validation; timeout, offline, non-2xx, redirect/protocol errors and wrong content type are surfaced as failures; no DTEK request or edge handling exists.
 
-**Acceptance:** Recorded fixtures decode; malformed JSON, wrong content type, HTTP errors, timeout, and changed required fields fail deterministically.
+**Required tests:** injectable-session/client tests for successful response, timeout/offline, non-2xx including 429/5xx, wrong MIME type, empty body, and unexpected redirect/challenge content.
 
-### Step 3 — Validate and map into the existing domain
+**Verification commands:** `rg -n "planned-outages|DTEK|URLSession" OutageSchedule`; run focused provider-client tests (exact `xcodebuild test` command determined from project scheme during implementation).
 
-- Implement pure validation for address identity, schedule identifiers, status semantics, provider date/timezone, interval boundaries/order/overlap, completeness, and freshness.
-- Map supported meanings to existing `ScheduleStatus` and construct `AddressSchedule`/`ScheduleSnapshot`.
-- Preserve provider-returned multiple schedules; do not invent a selection.
-- Add a snapshot source-updated timestamp only if needed for honest freshness and only with an explicit schema version/migration decision.
+### B. Response parsing and domain mapping
 
-**Acceptance:** Valid fixtures map exactly to expected internal models; invalid or ambiguous source semantics never become a confident “available” interval.
+**Objective:** Decode only fixture-supported YASNO response structures and map a selected group's supported planned schedule to existing schedule interval/status types.
 
-### Step 4 — Add app refresh orchestration and persistence
+**Likely files/components:** YASNO DTOs and a pure response validator/mapper in app data/service files; existing domain model only if a narrowly justified metadata field is needed.
 
-- Replace only the app's demo refresh action with a real refresh path when approved; retain the `MockScheduleFactory` and a deliberate demo/preview path.
-- Keep last-known-good snapshot if network, validation, or storage fails.
-- Save through `ScheduleStore`; reload WidgetKit timelines only after save succeeds.
-- Show loading/success/stale/failure status in app without exposing raw payloads or addresses in logs.
+**Dependencies:** A; current verified facts in [research](PHASE_3_DATA_SOURCE_RESEARCH.md); confirmed semantics for slot types/statuses; fresh sanitized fixtures.
 
-**Acceptance:** Successful refresh persists a decodable snapshot in the existing App Group file and issues a timeline reload; every failed refresh leaves the previous snapshot intact.
+**Acceptance criteria:** response must contain the requested group and valid supported day data; day dates/offsets and integer minute bounds are validated; unknown status/type, absent group/day, invalid or ambiguous intervals, and malformed payload fail closed; empty `WaitingForSchedule` is never turned into an all-available day; group identity remains explicit in mapped output.
 
-### Step 5 — Widget behavior and manual Xcode verification
+**Required tests:** fixture decoding; malformed/changed schema; unknown fields/enums according to chosen decoder policy; missing group/day; waiting/empty day; valid and invalid slot ranges/order/overlap; timezone/offset and DST boundary cases supported by actual fixtures; exact mapping of observed status/type semantics.
 
-- Keep `OutageTimelineProvider` offline and use the existing snapshot age/date checks, adjusting only if the approved freshness semantics require it.
-- Confirm the widget handles missing, invalid, wrong-day, stale, multi-schedule selection, and provider waiting states without showing mock data as live.
-- Once code work is approved, perform Xcode build, unit tests, and manual simulator/widget verification. Phase 2 build/simulator behavior still has outstanding manual verification per project context.
+**Verification commands:** focused mapper/DTO unit tests via `xcodebuild test -only-testing:<test-target>/<test-case>` (scheme/test target to be confirmed); inspect fixtures against `docs/PHASE_0_FINDINGS.md`.
 
-**Acceptance:** Widget renders the saved last-known-good snapshot offline, handles stale/missing data honestly, and responds to a successful app-triggered reload when WidgetKit schedules it.
+### C. Direct group selection and identity
 
-## Testing strategy
+**Objective:** Let users directly select and recognize a YASNO group without representing it as address-specific schedule data.
 
-### Unit tests
+**Likely files/components:** app selection UI/state; domain snapshot metadata in `OutageSchedule/Shared/Domain/OutageModels.swift`; related tests. No address resolver.
 
-- **DTO decoding:** normal schedule, multiple schedules, provider no-schedule state, missing optional fields, missing required fields, unknown enum/status, wrong JSON types, malformed JSON, and challenge HTML body.
-- **HTTP client:** 2xx valid JSON, non-2xx status, timeout, no network, redirect/edge challenge, wrong MIME type, empty body, and response larger than any chosen defensive limit (only if a limit is defined from provider facts).
-- **Validation:** requested-address mismatch; empty schedule list; unknown status; negative/out-of-range minute; start equal/after end; overlapping intervals; unsorted intervals; gaps where complete coverage is required; duplicate schedule IDs; impossible/ambiguous date; offset/timezone mismatch; DST boundary; stale update timestamp; future timestamp beyond allowed clock skew; tomorrow not published; multiple feed handling.
-- **Mapping:** exact conversion of each provider semantic to internal `ScheduleStatus`; correct Kyiv-local boundaries; stable IDs; selected schedule retained only when explicitly chosen; no conversion of missing time to available.
-- **Persistence:** round-trip internal snapshot; version rejection and migration if introduced; App Group unavailable; write failure; atomic-write behavior; failed save does not replace the previous good snapshot.
-- **Refresh orchestration:** save then reload order; no reload after fetch/validation/save failure; old snapshot preserved on all failures; error state distinguishes stale/offline/invalid source/persistence failure.
-- **Widget logic:** no network dependency; missing/wrong-day/stale snapshots; current-day data; provider waiting state; valid last-known-good data and schedule selection.
+**Dependencies:** A/B and verified provider response keys. Group choices are derived from actual returned group keys when supported; coverage limitations must be surfaced rather than filled with guessed identifiers.
 
-### Integration tests
+**Acceptance criteria:** selected identity stores provider plus exact group/subgroup string (including notation such as `19.1`); selection is validated against available provider data; group label is shown; no supposedly complete hardcoded catalog, address lookup, or address inference exists. Manual and YASNO modes remain independently selectable.
 
-- URLProtocol-backed or injected-session tests for the approved endpoint flow and representative sanitized fixtures; no live upstream calls in ordinary unit test runs.
-- App-level flow from selected address to DTO decode, validation, mapping, App Group snapshot save, and timeline reload request (reload collaborator injectable for deterministic assertion).
-- Widget target reads the same encoded snapshot from the configured App Group container and renders the expected selected schedule. Use an integration environment with the actual entitlement/container; unit test encoding alone does not prove signing configuration.
-- Optional live smoke check only when authorized and stable, run manually/explicitly with a known test address; avoid relying on production network availability in CI.
+**Required tests:** identity round-trip preserving exact subgroup notation; rejected unavailable group; changing group refreshes/maps that group; switching modes retains each mode’s persisted data; legacy/manual snapshot remains intact.
 
-### Failure acceptance criteria
+**Verification commands:** focused model/selection tests; source/copy review for direct group selection and group-level disclaimer.
 
-- Network/provider failures do not erase or replace last-known-good data.
-- An HTTP 200 HTML challenge is rejected as a provider protocol/access error.
-- Stale schedule data is labeled stale and never represented as freshly fetched.
-- Empty tomorrow/waiting data is not transformed into a fabricated all-available schedule.
-- Invalid intervals and unknown status semantics are rejected before persistence.
-- App Group write failure does not trigger a widget reload.
-- Widget remains fully functional from local storage while offline and never performs upstream requests.
+### D. Persistence and last-valid-snapshot behavior
 
-## Expected Phase 3B files
+**Objective:** Persist normalized group schedule, source identity, provider update timestamp, and client fetch time while preserving existing valid data on failure.
 
-Exact filenames may follow existing Xcode group conventions after project inspection. Expected changes are limited to:
+**Likely files/components:** `OutageSchedule/Shared/Domain/OutageModels.swift`, `OutageSchedule/Shared/Storage/ScheduleStore.swift`, app refresh coordinator, storage tests.
 
-| File | Expected change |
-|---|---|
-| `OutageSchedule/Shared/Domain/OutageModels.swift` | Only if a justified source-updated/freshness field or stable provider schedule identity must be persisted; otherwise no change. Schema compatibility must be preserved or migrated. |
-| `OutageSchedule/Shared/Storage/ScheduleStore.swift` | Likely no structural change; possibly expose typed persistence errors if refresh UI/tests need the distinction. Keep App Group path and atomic storage behavior. |
-| `OutageSchedule/Shared/Services/OutageDataSource.swift` (new; path/name provisional) | Provider-independent fetch contract and narrow error type. Place according to current target membership setup. |
-| `OutageSchedule/App/Data/OutageAPIClient.swift` (new; path/name provisional) | URLSession request/response boundary and HTTP validation. |
-| `OutageSchedule/App/Data/DTEKOutageDataSource.swift` (new; conditional on source gate) | Provider endpoint flow and external DTOs, or split DTOs into a small same-folder file if useful. No WAF bypass. |
-| `OutageSchedule/App/Data/ScheduleMapper.swift` (new; path/name provisional) | Pure validation and mapping from verified provider DTOs into existing internal models. |
-| `OutageSchedule/App/ScheduleRefreshCoordinator.swift` (new; path/name provisional) | Fetch/validate/save/reload orchestration and last-known-good behavior. |
-| `OutageSchedule/App/ContentView.swift` | Connect an approved refresh action and present refresh/freshness status; retain mock functionality. Address UI only if included in approved scope. |
-| `OutageSchedule/Widget/OutageTimelineProvider.swift` | Change only if product freshness policy requires it; retain local-only reads and existing stale/missing safeguards. |
-| `OutageScheduleTests/*` | Add DTO, client, mapper, store, coordinator, and widget behavior tests. |
-| `OutageSchedule/Shared/Mock/MockScheduleFactory.swift` | Expected unchanged; retain demo/mock behavior. |
+**Dependencies:** B and C; additive backward-compatible schema migration. Preserve current App Group atomic JSON mechanism.
 
-Project configuration should remain unchanged if the Xcode project automatically includes files in synchronized groups. If files require explicit target membership edits, explain that change and obtain Phase 3B approval before making it. Do not add packages or dependencies.
+**Acceptance criteria:** provider `updatedOn` remains distinct from local successful retrieval `fetchedAt`; source mode, provider and exact group identity are explicit; a valid snapshot is atomically saved; transport, invalid response, stale rejection, and save failure preserve last-known-good data; manual snapshots decode/migrate backward-compatibly; automatic refresh never overwrites manual data; widget reload follows successful write only.
 
-## Decisions still needed
+**Required tests:** schema 1 manual snapshot backward-compatible migration/read; manual/YASNO mode switch and group change preserve each mode; metadata round-trip including `19.1`, `updatedOn`, and `fetchedAt`; atomic write; missing App Group/write failure; last-valid snapshot preserved for each failure class; no timeline reload after failed save.
 
-1. Approval of a verified supported provider interface; this is a hard prerequisite, not an implementation detail.
-2. Whether address search is in Phase 3B or the app receives a previously selected address.
-3. Multi-feed address UX and persistence of selected schedule identity.
-4. Provider stale threshold and whether to persist provider update time separately from client `fetchedAt`.
-5. Whether refresh is manual-only initially or also uses an approved opportunistic app background task.
-6. Whether UI should retain a visibly labeled mock/demo mode after live integration.
+**Verification commands:** focused `ScheduleStore` and coordinator tests; inspect serialized fixture/snapshot and verify `schemaVersion` migration behavior.
 
-## Verification report expected after approval
+### E. UI integration and group-level labeling
 
-After implementation is authorized, report exact changed files, fixture sources/date, build and unit-test commands/results, manual Xcode/Simulator verification still required, and any remaining provider reliability limits. Do not claim successful live integration based only on mocked URL responses or a successful HTTP status.
+**Objective:** Add selected-group refresh while retaining the existing manual user workflow and honest group-level meaning across app and widget.
+
+**Likely files/components:** `OutageSchedule/App/ContentView.swift`; `OutageSchedule/Widget/WidgetViews.swift`; `OutageSchedule/Widget/OutageScheduleWidget.swift`; `OutageSchedule/Widget/OutageTimelineProvider.swift` only if data selection/freshness requires it; preserve `MockScheduleFactory`.
+
+**Dependencies:** A-D; approved group selection; reviewed localized copy.
+
+**Acceptance criteria:** app and widget identify selected group and visibly state that actual outages at an individual building/apartment may differ; manual and YASNO modes are clearly distinct and independently usable; switching mode or group causes no data loss or accidental overwrite; mock/demo state stays distinct; unavailable/stale states are understandable; widget consumes only persisted snapshot and makes no network request.
+
+**Required tests:** view/model presentation tests where supported; widget snapshot tests or rendering checks for valid, stale, unavailable, and demo states; source review confirms no widget networking.
+
+**Verification commands:** `rg -n "address|адрес|group|груп|будин|квартир" OutageSchedule/App OutageSchedule/Widget`; run focused UI/widget tests and manual simulator review after environment allows.
+
+### F. Error handling and data freshness
+
+**Objective:** Give users accurate refresh and freshness state based on provider `updatedOn`, not HTTP cache headers or local fetch time alone.
+
+**Likely files/components:** YASNO client/mapper; app refresh coordinator and `ContentView`; snapshot metadata; widget freshness presentation.
+
+**Dependencies:** A/B/D; approved product freshness policy; verified meaning/parseability of provider update time.
+
+**Acceptance criteria:** age of `updatedOn` through 6 hours inclusive is CURRENT; over 6 through 12 hours inclusive is STALE; over 12 hours is STALE with stronger warning; missing/malformed/unusable timestamp is not current; future timestamp is invalid and rejected. Show provider update time separately from local `fetchedAt`; stale data never silently becomes fresh; refresh errors do not erase last-known-good data; waiting-for-schedule does not fabricate intervals; HTTP `Date`, `Cache-Control`, HTTP 200, and local fetch time never establish source freshness.
+
+**Required tests:** timestamp parsing/timezone; exact 6-hour and 12-hour boundaries; >12-hour stronger warning; missing/malformed/future timestamp rejection; stale response; older payload after newer snapshot; waiting state; refresh failure with visible old snapshot.
+
+**Verification commands:** focused freshness/coordinator tests; inspect UI copy against the researched 2026-11-11 observation where `updatedOn` lagged HTTP `Date` by about 20 hours.
+
+### G. Unit tests and regression testing
+
+**Objective:** Verify provider integration without ordinary tests depending on live YASNO or DTEK services and preserve existing manual/demo behavior.
+
+**Likely files/components:** `OutageScheduleTests/` new provider, mapper, storage, coordinator, and presentation tests; existing `ScheduleDomainTests.swift`; test fixtures under the established test resource convention.
+
+**Dependencies:** A-F and actual project target/resource configuration. Execute in order A (client) → B (mapping/validation) → C (direct selection) → D (schema and persistence) → E (app/widget UI) → F (freshness/error behavior) → G (regression suite) → H (build/final review); where implementation dependencies require, keep each phase gated on its listed prerequisites.
+
+**Acceptance criteria:** tests use sanitized fixtures and an injected URL session; no live requests in the standard suite; all failure cases preserve last valid data; existing domain tests continue to pass; no DTEK implementation dependency is present.
+
+**Required tests:** the tests specified in A-F plus regression coverage for `ScheduleCalculator`, manual snapshots, mock factory scenarios, and widget local reads.
+
+**Verification commands:** `xcodebuild test -project OutageSchedule.xcodeproj -scheme OutageSchedule -destination 'platform=iOS Simulator,name=<available simulator>' CODE_SIGNING_ALLOWED=NO` (confirm actual available destination/scheme); focused `-only-testing` runs for changed test suites.
+
+### H. Build verification and final review
+
+**Objective:** Build app and widget, run unit tests, inspect final diff and verify product semantics/documentation/code agree.
+
+**Likely files/components:** no additional files expected; project/target membership only if required to compile new app-only files.
+
+**Dependencies:** A-G complete and available Xcode/simulator environment.
+
+**Acceptance criteria:** app and widget targets build; relevant unit/regression tests pass; app and widget have no provider networking; group-level semantics and stale/error behavior agree; no unrelated settings/signing changes; full diff and `git diff --check` reviewed.
+
+**Required tests:** full unit suite plus app/widget build; manual app and widget review when simulator services are available.
+
+**Verification commands:** `xcodebuild -project OutageSchedule.xcodeproj -scheme OutageSchedule -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build`; `xcodebuild test -project OutageSchedule.xcodeproj -scheme OutageSchedule -destination 'platform=iOS Simulator,name=<available simulator>' CODE_SIGNING_ALLOWED=NO`; `git diff --check`.
+
+**Known environment issue:** the prior Ralph iteration reported a malformed SwiftUI `@State` macro-plugin response and simulator services unavailable; its build failed before successful verification. Treat this as unresolved environment/toolchain evidence, not an application code defect. Re-run and record exact output during implementation. Do not modify signing, provisioning, unrelated Xcode settings, or source code to conceal it.
+
+## Out of scope
+
+- DTEK address-specific integration, scraping, protection bypass, or browser automation.
+- Address-to-group resolution or inferred group selection.
+- Backend, authentication, push notifications, and multi-city support.
+- Additional provider-health diagnostics are optional only if they do not expand product scope or store full addresses/raw payloads.
+
+No Phase 4 tasks are defined here. Implementation remains paused pending explicit approval after this documentation revision.

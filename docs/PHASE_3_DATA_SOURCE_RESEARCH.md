@@ -1,69 +1,70 @@
-# Phase 3A Data Source Research
+# Phase 3 Data Source Research: YASNO Group Schedule
 
-**Research date:** 2026-11-11  
-**Scope:** Read-only provider investigation and architecture input. No source code, project configuration, or existing fixtures were changed.  
-**Fresh HTTP checks:** unauthenticated GET requests to YASNO planned schedule and regions endpoints, and DTEK Kyiv's official shutdown page. The requests were read-only.
+**Research evidence dates:** 2026-11-07 and 2026-11-11 (see [Phase 0 findings](PHASE_0_FINDINGS.md) and the evidence below).
 
-## Recommendation
+**Current product decision:** YASNO group schedule is the approved primary automatic source for Phase 3. This is a group-level product; it does not claim an address-specific outage schedule.
+**Scope:** documentation revision. No new HTTP requests or application changes were made for this revision.
 
-DTEK Kyiv is the correct authority to investigate for the application's address-specific schedule, but it is **not yet an implementable provider**: a current machine-readable endpoint, access policy, and schema have not been verified. Phase 3B should begin with an explicit integration gate: obtain or verify a supported, stable DTEK data interface that can return the selected address's schedule without defeating the site's edge controls. Until then, retain the mock data path and do not label YASNO group data as an address-specific DTEK schedule.
+## Decision and semantics
 
-YASNO is technically callable by native `URLSession` and currently returns live JSON, but its tested endpoint is still keyed by groups (`1.1`, `2.1`, etc.) and describes `today`/`tomorrow` group schedules. DTEK's official product information describes individual schedules per address, possible two-feed schedules for one building, and a schedule that can change at any time. That is a material semantic mismatch, not a transport issue.
+Use YASNO's planned outages endpoint for a user-directly-selected Kyiv group/subgroup. Phase 3 does not resolve addresses, infer groups from addresses, or require an address. Do not invent or hardcode a supposedly complete group list. Prefer deriving selectable identifiers from actual keys in the provider schedule response when its structure supports this; validate the selected provider/group identity against returned data and preserve the exact identifier, including subgroup notation such as `19.1`. The selected identity includes provider and group identifier. The current evidence establishes that the schedule response is group-keyed, but does not establish complete group coverage or a separate safe enumeration endpoint; selector coverage is therefore a technical limitation to resolve from provider response data, never by guessed choices. A group schedule is not individually verified for a building or apartment; the UI must say actual outages there may differ.
 
-## Current verification
+DTEK address-specific automatic integration is out of scope for Phase 3 and is not a blocking dependency. Do not investigate, automate, or bypass DTEK edge protection. Historical DTEK findings below remain evidence about the limits of the prior investigation, not Phase 3 work.
 
-| Source / request | Current result (2026-11-11) | Verified facts and limits |
-|---|---|---|
-| YASNO `GET /api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages` | HTTP 200, JSON, 28,952-byte body; `Cache-Control: max-age=300, public`; response `Date: Wed, 11 Nov 2026 16:21:34 GMT` | Unauthenticated request succeeded. The object is keyed by queue strings such as `1.1`, `2.1`. A day record includes `slots` (`start`, `end`, `type`), `date`, `status`, and `updatedOn`. In the response, today was 2026-11-11, tomorrow had `WaitingForSchedule` with empty slots, and `updatedOn` was 2026-11-10T20:00:02Z. HTTP success/cache age does not establish schedule freshness. |
-| YASNO `GET /api/blackout-service/public/shutdowns/addresses/v2/regions` | HTTP 200, JSON, `Cache-Control: max-age=300, public` | Unauthenticated request succeeded. Current response listed region `id: 25`, `value: Київ`, and DSO `id: 902`, named DTEK Kyiv Electricity Networks. This establishes current region/operator metadata only, not an address-to-schedule equivalence. |
-| DTEK `GET https://www.dtek-kem.com.ua/ua/shutdowns` | HTTP 200, `text/html`, `Cache-Control: no-cache, no-store`; body 205 bytes | Body is an Incapsula bootstrap/challenge page with `robots noindex,nofollow`; it is not the page application or schedule API. No AJAX calls or schema can be verified from this response. Do not automate or bypass the challenge. |
+## Verified endpoint and response evidence
 
-The prior Phase 0 report, [PHASE_0_FINDINGS.md](PHASE_0_FINDINGS.md), includes dated sanitized real YASNO fixtures, address resolver responses, and a previous direct DTEK challenge result. These are historical evidence, not a promise that the same YASNO fields or endpoint behavior will persist. No new fixture is added here because the requested deliverables are architecture documents and the current schedule response contains data that is not useful as a stable test expectation. Fixtures for implementation should be captured and sanitized when a provider/schema is approved.
+The 2026-11-11 unauthenticated GET to the following endpoint returned HTTP 200 JSON (28,952 bytes), `Cache-Control: max-age=300, public`, and `Date: Wed, 11 Nov 2026 16:21:34 GMT`:
 
-## Provider comparison
+`https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages`
 
-| Criterion | YASNO public blackout API | DTEK Kyiv official address lookup |
-|---|---|---|
-| Authority/model fit | The region names DTEK Kyiv Networks, but the tested schedule is group-keyed. Fit for today's individual-address schedule is not established. | Official source for the target operator. Official page says each address has an individual schedule; some buildings can yield two schedules because of multiple feeds. |
-| Live machine access | Verified unauthenticated GETs for region metadata and planned group schedules. | Not verified: current direct page fetch returns an edge challenge, not usable content or API response. |
-| Address flow | Phase 0 verified street → house → group for two Kyiv samples. It returned a single group/subgroup, which does not encode DTEK's documented multi-feed case. Current Phase 3 check only reverified regions and schedule, not all resolver steps. | Official web experience asks for street then building. Current lookup request sequence and response shape remain unknown. |
-| Response / schedule semantics | Group-keyed object; day slots use minute-of-day integers and types such as `Definite` and `NotPlanned`; day status includes `ScheduleApplies` and `WaitingForSchedule`. | Official site describes day-ahead address schedule. Current DTO, timezone representation, slot semantics, multi-feed IDs, and update metadata unknown. |
-| Authentication and restrictions | No token/session was needed for tested GETs. No published SLA, quota, or compatibility contract was identified. | Unknown for a successful machine request. Site edge challenge is an access/reliability barrier; do not treat reverse-engineered browser/AJAX behavior as permission to automate. |
-| Freshness | Schedule response advertises five-minute public cache; current `updatedOn` lagged response date by about 20 hours. It is not a freshness guarantee. | Official page says schedule is only forecast a day ahead and can change at any time; also says high concurrent traffic can cause delay up to five minutes. Exact machine timestamps unknown. |
-| Direct iOS feasibility | Technically viable for raw GET requests; no browser CORS limitation applies to native `URLSession`. Product semantics and undocumented API maintenance remain blockers. | Unknown. Do not implement until a supported endpoint is shown to work from an ordinary client/server without WAF circumvention. |
+The Phase 0 sanitized fixtures and the live response extract recorded in the Phase 0 report show a top-level object keyed by group strings (for example `19.1`); each observed group record contains `today`, `tomorrow`, and `updatedOn`. Day objects contain `slots`, `date`, and `status`; observed slot objects contain integer `start`/`end` minute-of-day values and `type`. Observed statuses include `ScheduleApplies` and `WaitingForSchedule`; observed slot types include `Definite` and `NotPlanned`. These statements describe observed payloads, not a published compatibility contract.
 
-## Decision and trade-offs
+The 2026-11-11 response's `updatedOn` value was `2026-11-10T20:00:02Z`. The earlier sanitized fixture recorded for 2026-11-07 has group `19.1`, `today.date` `2026-11-07T00:00:00+02:00`, `tomorrow.status` `WaitingForSchedule` with empty slots, and `updatedOn` `2026-11-07T11:45:01+00:00`. Day dates therefore included an explicit offset in the observed fixture; `updatedOn` was UTC. Interpret `start` and `end` as minutes within the corresponding day only because that is how the observed sample and existing research interpret the values; verify against new fixtures before implementation.
 
-1. **Preferred authority: DTEK Kyiv, conditional on a supported machine interface.** It matches the individual-address product model and is the source users are directed to for current address schedules. Its current official page says neighboring buildings can differ, a building can have two feeds, schedules are day-ahead, and emergency/system changes can invalidate the published plan.
-2. **Do not use YASNO as the primary source for this widget's asserted address schedule.** Its endpoints remain useful for investigation or a separately labeled group schedule, but a successful request does not prove the result applies to the current DTEK address-level schedule. Mixing its group schedule into an address-specific product could confidently display the wrong outage periods.
-3. **No backend now.** A backend cannot cure a source that is not authorized or stable and should not be used to bypass the DTEK edge challenge. If DTEK later provides a supported feed that requires server-side credentials, aggregation, or permitted caching, revisit a small adapter then. If a supported public endpoint works for direct `URLSession`, direct app refresh is the simpler initial option.
-4. **Refresh expectations must be conservative.** A source can change during the day and may only publish tomorrow's plan. The app should retain last-known-good data with a visible source/update time and freshness state; the widget should never fetch the network itself.
+Sanitized payload extracts, headers, and context are preserved in [Phase 0 findings](PHASE_0_FINDINGS.md). No new fixture was created for this documentation-only decision. Reference endpoint links: [planned outages](https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages), [regions](https://app.yasno.ua/api/blackout-service/public/shutdowns/addresses/v2/regions).
 
-## Reliability and maintenance risks
+## Group identity evidence (not a selector catalog)
 
-- Undocumented YASNO endpoints can change without notice or usage guarantees; response metadata currently demonstrates that a five-minute CDN cache is not equal to a recent underlying schedule update.
-- DTEK edge protection may make automated requests unavailable. An HTTP 200 challenge HTML response must be treated as a protocol failure, not as an empty schedule.
-- Official schedules are forecasts and can change after an аварія, overload, or grid incident; a schedule is not real-time proof that power is physically available.
-- DTEK's multiple-feed case requires representing more than one schedule for one address and cannot be collapsed to a single arbitrary choice. The existing `AddressSchedule` collection and `selectedScheduleID` can represent alternatives, but the app's selection UX needs a product decision.
-- Address spelling, renames, house variants, missing addresses, and address selection ambiguity need provider-returned identity/labels rather than locally guessed IDs.
-- Offline state, invalid HTML/JSON, partial/missing days, changed timezone formats, and timestamps with stale or future values must preserve last-known-good storage and be visible to app/widget logic.
-- No provider quota, service-level agreement, or long-term compatibility commitment has been established by this research.
+Phase 0 verified two provider-returned examples through YASNO address suggestions and `/addresses/v2/group`. These are historical evidence only, not an approved address lookup flow or a complete selector catalog:
 
-## Source links
+| Provider-returned sample | Returned group identity |
+|---|---|
+| `вул. Хрещатик, 1` | `group: 19`, `subgroup: 1` → `19.1` |
+| `просп. Бажана, 10` | `group: 37`, `subgroup: 1` → `37.1` |
 
-- [DTEK Kyiv official shutdown page](https://www.dtek-kem.com.ua/ua/shutdowns) — current address lookup and explanatory content; direct HTTP response in this research was only an edge challenge.
-- [YASNO live regions endpoint](https://app.yasno.ua/api/blackout-service/public/shutdowns/addresses/v2/regions) — current live HTTP response verified on 2026-11-11.
-- [YASNO live planned schedule endpoint](https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages) — current live HTTP response verified on 2026-11-11.
-- [Phase 0 findings](PHASE_0_FINDINGS.md) — prior tests, sanitized fixtures, and historical limitations.
+The researched group endpoint is `GET /api/blackout-service/public/shutdowns/addresses/v2/group` with `regionId`, `dsoId`, `streetId`, and `houseId`; the tested response was `{ "group": 19, "subgroup": 1 }`. This address mapping flow is explicitly out of scope for Phase 3. Its two observations neither justify implementing address resolution nor establish selector coverage.
 
-## Unresolved questions / Phase 3B gate
+The schedule endpoint's group-keyed shape is directly evidenced by the live response and fixtures. Region `25` was returned as Kyiv and DSO `902` as DTEK Kyiv Electricity Networks by the regions response. Do not hardcode these identifiers as a durable contract; validate returned region/operator metadata if implementation uses it.
 
-1. Will DTEK provide or authorize a documented machine-readable interface/feed for address schedule lookup, and what are its terms and rate limits?
-2. Can that interface be called directly from a native app, and does it return access challenges to ordinary clients? What authentication, if any, is officially supported?
-3. What are the current address, schedule, multi-feed, status, timezone, and update timestamp schemas?
-4. How should a resident select the applicable feed when DTEK returns two schedules for one building?
-5. Does YASNO currently intend the Kyiv group schedule to be a separate product/model, and does it claim any relationship to DTEK's new individual-address schedules?
-6. What minimum freshness age should the product display as stale, given DTEK's day-ahead and change-at-any-time wording?
-7. If no supported DTEK interface exists, should product scope change to an explicitly labeled group schedule, or should live data integration wait?
+## Freshness and limitations
 
-**Stop condition:** Do not implement a DTEK scraper, browser automation, edge-token flow, or WAF workaround. Resolve the supported-access question before Phase 3B provider code.
+- `Cache-Control: max-age=300` describes observed intermediary caching, not a publication or freshness guarantee.
+- On 2026-11-11, `updatedOn` lagged the HTTP `Date` by about 20 hours. The earlier 2026-11-07 sample lagged by about 8 hours 38 minutes. A successful HTTP response or recent client fetch must not be presented as a recent provider schedule update.
+- The observed endpoint includes `updatedOn`; it is the product's source-freshness timestamp, while local successful retrieval time (`fetchedAt`) is stored separately. Never substitute HTTP `Date`, `Cache-Control`, or local fetch time for it. The exact provider contract, update cadence, and uniformity across groups remain undocumented. Product policy, not a YASNO guarantee: age `<= 6 hours` is CURRENT; `> 6 and <= 12 hours` is STALE; `> 12 hours` is STALE with a stronger warning. Missing, malformed, unusable, or future `updatedOn` is never current; a future timestamp is invalid and rejected.
+- The earlier probable-outages endpoint is a separate group-keyed weekly response and is not the approved Phase 3 primary source. Do not combine its possible-period semantics with planned outage slots without a separate product decision.
+- `WaitingForSchedule` with empty slots was observed for tomorrow. It is not an all-available schedule. Missing groups, missing days, empty slots, unknown status/type values, malformed JSON, and unexpected date/time representations must be treated as unavailable/invalid; never fabricate availability.
+- The endpoint was observed unauthenticated, but no published API contract, SLA, quota, rate limit, or compatibility commitment was found in the research.
+- The 2026-11-11 live check is point-in-time evidence. Endpoint behavior and response schema may change.
+
+## Failure behavior requirements
+
+Transport failures, timeout/offline conditions, non-2xx status (including rate limiting), invalid JSON/schema, unknown enum values, absent requested group, unsupported day status, invalid slot bounds/order, and stale or implausible timestamps must fail closed. Preserve the last valid snapshot on all such failures. A valid waiting/no-schedule response may update a visible refresh/error state, but must not overwrite the last valid schedule with fabricated intervals. UI must distinguish current group schedule, stale last-known-good group schedule, and unavailable data.
+
+## DTEK status
+
+DTEK's official Kyiv page returned challenge HTML during the documented prior request, not a verified schedule API response. The historical research did not establish a supported machine interface. DTEK address-specific automatic integration is explicitly out of Phase 3 scope; no edge challenge, token flow, browser automation, scraper, or WAF workaround is to be investigated or implemented.
+
+## Sources
+
+- [Phase 0 findings](PHASE_0_FINDINGS.md) — sanitized real YASNO response extracts, address-to-group examples, endpoint observations and limitations.
+- [YASNO live regions endpoint](https://app.yasno.ua/api/blackout-service/public/shutdowns/addresses/v2/regions).
+- [YASNO live planned schedule endpoint](https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages).
+- [DTEK Kyiv shutdown page](https://www.dtek-kem.com.ua/ua/shutdowns) — historical source checked, not part of automatic Phase 3 integration.
+
+## Remaining technical uncertainties
+
+1. YASNO publishes no verified compatibility contract, service level, quotas, or rate limits in the research.
+2. `updatedOn` semantics/cadence are undocumented; the approved 6/12-hour thresholds are product policy, not provider guarantees.
+3. The schedule response is observed to have group keys, but completeness of group coverage and behavior if groups are omitted is unknown. Build choices only from verified provider data and report coverage limitations; never guess missing groups.
+4. Behavior for unavailable groups, partial days, DST transitions, empty slots beyond the observed waiting state, and future schema changes requires fixture-backed handling.
+5. The actual outage experienced at an individual property can differ from the selected group's displayed schedule; no address-level accuracy is claimed.

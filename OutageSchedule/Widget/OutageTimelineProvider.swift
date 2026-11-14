@@ -22,20 +22,8 @@ struct OutageTimelineProvider: TimelineProvider {
         let snapshot = currentSnapshot(now: now)
         let schedule = snapshot.selectedSchedule
         let dayEnd = KyivTime.date(on: snapshot.scheduleDate, minuteOfDay: 1440)
-        var dates: Set<Date> = []
-        let verifiedAt = store.load()?.lastVerifiedAt
-        let staleAt = verifiedAt?.addingTimeInterval(ScheduleSnapshot.manualScheduleFreshness)
-
-        if let schedule {
-            for interval in schedule.intervals {
-                if interval.start > now && (staleAt == nil || interval.start < staleAt!) { dates.insert(interval.start) }
-                if interval.end > now && interval.end < dayEnd && (staleAt == nil || interval.end < staleAt!) { dates.insert(interval.end) }
-            }
-        }
-
-        if let staleAt, staleAt > now {
-            dates.insert(staleAt.addingTimeInterval(1))
-        }
+        let staleAt = TimelinePolicy.manualExpiry(mode: store.activeMode, verifiedAt: store.loadManual()?.lastVerifiedAt)
+        let dates = TimelinePolicy.dates(for: schedule, now: now, dayEnd: dayEnd, manualStaleAt: staleAt)
 
         let entryDates = ([now] + dates.filter { $0 > now }.sorted()).map {
             OutageWidgetEntry(date: $0, snapshot: currentSnapshot(now: $0))
@@ -47,14 +35,38 @@ struct OutageTimelineProvider: TimelineProvider {
 
     private func currentSnapshot(now: Date = .now) -> ScheduleSnapshot {
         let today = KyivTime.dayStart(containing: now)
-        guard let saved = store.load(),
-              saved.scheduleDate == today,
-              saved.sourceKind == .userEntered else {
-            return MockScheduleFactory.unavailableSnapshot(now: now)
+        if store.activeMode == .yasno {
+            guard let groupID = store.selectedYasnoGroup else {
+                return MockScheduleFactory.unavailableSnapshot(now: now)
+            }
+            guard let saved = store.loadYasno(groupID: groupID), saved.scheduleDate == today,
+                  saved.selectedSchedule != nil else {
+                return yasnoUnavailable(groupID: groupID, now: now)
+            }
+            var displayed = saved
+            if let groupID = saved.groupIdentity?.identifier,
+               let waiting = store.loadYasnoWaiting(groupID: groupID), waiting.fetchedAt > saved.fetchedAt {
+                displayed.providerWaitingUpdatedOn = waiting.updatedOn
+                displayed.providerWaitingFetchedAt = waiting.fetchedAt
+            }
+            return displayed
         }
-        guard saved.isFreshManualSchedule(at: now), saved.selectedSchedule != nil else {
-            return MockScheduleFactory.unavailableSnapshot(now: now, basedOn: saved)
+        let saved = store.load()
+        guard saved != nil else { return MockScheduleFactory.unavailableSnapshot(now: now) }
+        return TimelinePolicy.manualDisplaySnapshot(saved: saved, now: now)
+    }
+
+    private func yasnoUnavailable(groupID: String, now: Date) -> ScheduleSnapshot {
+        var snapshot = MockScheduleFactory.unavailableSnapshot(now: now)
+        snapshot.address = nil
+        snapshot.sourceKind = .yasnoGroup
+        snapshot.groupIdentity = ScheduleGroupIdentity(provider: .yasno, identifier: groupID)
+        if let waiting = store.loadYasnoWaiting(groupID: groupID) {
+            snapshot.fetchedAt = waiting.fetchedAt
+            snapshot.sourceUpdatedOn = waiting.updatedOn
+            snapshot.providerWaitingUpdatedOn = waiting.updatedOn
+            snapshot.providerWaitingFetchedAt = waiting.fetchedAt
         }
-        return saved
+        return snapshot
     }
 }

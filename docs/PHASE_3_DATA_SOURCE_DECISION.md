@@ -1,104 +1,38 @@
-# Phase 3A.1 Data Source Decision & Feasibility Assessment
+# Phase 3 Data Source Decision
 
-**Date:** 2026-11-11  
-**Scope:** Research and decision only. No source code, project configuration, or previous findings were changed.
+**Decision status:** Current product decision, superseding the November 11, 2026 address-specific/manual-MVP recommendation below in the research history.
+**Approved scope:** YASNO group schedule as the primary automatic Phase 3 source.
+**Decision date:** As recorded by the product owner in the Phase 3 plan revision.
 
-## Decision
+## Approved decision
 
-### Recommended MVP: user-configured schedule, sourced by the user from an official channel
+Phase 3 will automatically load and display a user-selected YASNO group schedule. The product is a group schedule, not an address-specific outage schedule. The user must see that the schedule applies to the selected group and that actual outages at an individual building or apartment may differ. A YASNO address-to-group mapping, if offered, identifies a group only; it does not verify an address-specific schedule.
 
-For a useful working application without claiming unsupported live accuracy, the MVP should let the user enter/select their address and configure the schedule intervals they have just verified through an official DTEK channel. Store the schedule for its effective date, record when the user last verified it and where, and label it clearly as **user-entered / last checked**, not as a live DTEK feed. Provide a direct link or instruction to check the official source again. If the schedule has no reliable current value, show “no current schedule” and keep the widget unavailable state; do not fill gaps with assumed availability.
+DTEK address-specific automatic integration is out of scope and does not block Phase 3. No DTEK edge-protection investigation, scraping, browser automation, or bypass is authorized or required. This decision changes the product scope from the earlier address-specific requirement; historical findings remain useful only as evidence and constraints.
 
-DTEK is the authoritative target for individual Kyiv address schedules, but no supported DTEK machine-readable interface has been verified. A provider-backed, automatically refreshed MVP cannot safely begin today. This user-assisted mode provides an honest, useful schedule widget while preserving a path to a future approved remote source.
+## Evidence and trade-offs
 
-**Important product distinction:** this is technically functional schedule display, but its accuracy depends on the user transcribing the current official schedule correctly and refreshing it after DTEK changes it. It is not an authoritative integration, a real-time status indicator, or proof that electricity is physically present. DTEK itself says schedules can change at any time and describes them as a day-ahead forecast. [DTEK's official shutdown page](https://www.dtek-kem.com.ua/ua/shutdowns?page-limit=25) directs customers to its site/chatbots and Kyiv Digital for address schedules.
+The existing [Phase 0 findings](PHASE_0_FINDINGS.md) and [Phase 3 data source research](PHASE_3_DATA_SOURCE_RESEARCH.md) record live unauthenticated YASNO GET responses for region metadata and planned group schedules. The observed schedule endpoint is keyed by group strings such as `19.1` and contains day records with slots, dates, statuses, and `updatedOn`. Two provider-resolved samples mapped to groups `19.1` and `37.1`. These facts support a group schedule product, not an individual-property accuracy claim.
 
-### Phase 3B readiness
+The endpoint is technically callable in the observed checks, but it is undocumented and has no verified SLA, quota, or compatibility promise. The observed five-minute cache header did not guarantee current schedule data: the November 11 sample's `updatedOn` lagged the HTTP `Date` by about 20 hours. The app must use provider update metadata for freshness, preserve the last valid snapshot, and report stale/unavailable data honestly.
 
-**Phase 3B cannot safely begin as an automatic provider integration.** It can begin only after approval of a scoped user-configured MVP, with the product labels and data-entry behavior described above. If the desired Phase 3B outcome is live authoritative schedules, wait until an official supported API/feed or an approved machine-access agreement is established and verified. Do not use undocumented endpoints, scrape website flows, or bypass WAF protections.
+No backend is currently required by the observed public GET flow. Keep requests in the main app and the widget offline. Reconsider a backend only if a supported provider requirement later demonstrates a need; do not add one to compensate for undocumented behavior.
 
-**User approval received:** proceed with the user-configured manual MVP. The user chose a two-hour freshness window and approved the recommended defaults: complete on/off intervals, up to two schedule variants with explicit user selection, Kyiv city, and a link to the official DTEK shutdown page. The app must distinguish data entry from explicit confirmation that the schedule was checked at DTEK.
+## Historical decision record
 
-## Options assessed
+The November 11, 2026 assessment recommended a user-configured manual schedule because the original product requirement was address-specific and no supported DTEK machine interface had been verified. It also rejected the then-known YASNO group data for that address-specific claim. The product owner has since explicitly approved group schedule semantics, removing that mismatch as a Phase 3 blocker. The historical DTEK and YASNO evidence remains unchanged in [Phase 0 findings](PHASE_0_FINDINGS.md); it must not override the approved group-level product definition.
 
-| Option | Accuracy | Address-level support | Technical feasibility | Reliability and maintenance | Decision |
-|---|---|---|---|---|---|
-| **A. Direct YASNO API** | The API returns real schedule data, but the live-verified planned endpoint is group-keyed (`1.1`, `2.1`, etc.). Phase 0 verified house-to-group resolution; it did not verify that those group records represent DTEK's current per-address schedule. The November 11 response also had a five-minute public cache header while `updatedOn` lagged the response by about 20 hours. | Address resolver exists and returns one group/subgroup in the Phase 0 examples. That is not proof of an individual-address schedule. YASNO's current public Kyiv outage page now presents street/building address inputs and states that one address can return two graphs. The relationship between that UI and the tested group-keyed API is unverified. | Straightforward native `URLSession` GETs were verified without authentication for the tested endpoints. No browser CORS issue. No documented API contract, rate limit, or SLA was found. | Easy to prototype; medium/high ongoing risk from undocumented schema, freshness ambiguity, and potentially changed schedule semantics. Must re-verify source mapping and update cadence. | **Reject as direct data provider for address-accurate MVP for now.** Reconsider only if YASNO documents or authoritatively confirms the tested endpoint's current address applicability and schedule semantics. The public UI may be useful for user-assisted verification. |
-| **B. Official DTEK API/feed** | Highest potential: DTEK is the distribution operator and its official page says individual address schedules can differ, can have two feed graphs, and can change during the day. | Explicitly address-specific in official website experience. Multiple feeds can exist per building; residents may need building management to identify their apartment's feed. | No supported machine interface verified. Direct request currently yields Incapsula challenge HTML, not an API response. Authentication/access rules, schema, cadence, and rate limits unknown. | Best semantic authority, but implementation and operations are currently blocked. An unsupported interface could break without notice; WAF bypass is prohibited. | **Preferred future automatic provider, conditional on supported access. Not ready to implement.** |
-| **C. User-assisted configuration from official schedule** | Potentially high for the date/time the user verifies if entered accurately; transcription mistakes and later source changes remain possible. User may be unable to determine which of two building feeds applies. | User can enter their address and one or more schedule variants. Applicability is user-confirmed; when uncertain, the UI must preserve that uncertainty and avoid choosing a feed on the user's behalf. | Low/moderate. Existing domain supports dated intervals and multiple `AddressSchedule` entries. Requires an interval editor, date and source-check metadata, persistence, and clear stale/unavailable presentation. No network dependency. | No endpoint maintenance. Ongoing user burden and risk of stale/manual data. Needs explicit “last verified” date and easy correction. | **Recommended interim MVP**, if product accepts manual entry and honest labeling. |
-| **D. Official Kyiv Digital, DTEK website or chatbot as another source** | Official channels are authoritative for the values presented to the user. No evidence found here of a supported public machine-readable API for these channels. | DTEK says its website, bots, and Kyiv Digital can provide address results. | Feasible for the user to consult manually; automation/API access is unverified. Account-linked bots may require user registration and may be inappropriate to call from a third-party app. | Low integration maintenance if linked/opened for manual lookup; high and unacceptable maintenance/policy risk if scraped or reverse-engineered. | **Use as a user handoff/source, not as an automated app provider.** |
-| **E. Community clients / third-party aggregators** | Varies by source; can lag, mis-map addresses, or depend on unofficial interfaces. No independent authority guarantee established. | Some claim address/group support; no approved accurate interface established for this project. | Often technically accessible through reverse-engineered endpoints, but accessibility does not establish permission or durability. | High upstream breakage and provenance risk; adds another service dependency and can inherit WAF issues. | **Reject for MVP.** Reconsider only with a documented, reputable source contract and independently validated address mappings. |
-| **F. DTEK server proxy/backend** | Same upstream accuracy as the source; proxying does not improve data truth. | Same as DTEK source. | No supported backend-accessible upstream is known. | Adds hosting, privacy, security, and operational cost without resolving access authorization. | **Reject now.** Consider only if DTEK explicitly supports a server feed or credentials/caching requirement makes a backend necessary. |
+## Architecture consequences
 
-### YASNO public page vs YASNO API
+- Preserve the `OutageDataSource → Remote Client → Response Mapper → ScheduleStore → Widget` boundary.
+- Persist selected YASNO group identity, source update time, and client fetch time distinctly. The current model is manual/address-oriented and has no YASNO group identity; any minimal additive model/schema migration must preserve existing manual snapshot behavior.
+- Keep `MockScheduleFactory`; do not conflate demos with provider data.
+- All network work remains in the main app. Widget consumes a local last-valid snapshot only.
+- Invalid, stale-rejected, waiting, or failed responses never fabricate availability or erase last-known-good data.
+- Show the selected group and a clear building/apartment applicability disclaimer in app and widget.
 
-YASNO's current public outage page exposes street/building fields and includes FAQ topics about two schedules for one address and schedule changes. This is meaningful evidence that a human-facing address lookup is offered by YASNO. It does **not** prove that the previously tested public API's group-keyed planned-outages response is the backend for that lookup, or that the group's schedule is an exact equivalent to the displayed individual result. This is a distinct unresolved question. The API should not be assumed accurate for address-specific schedules based on the UI alone.
+Detailed provider facts and uncertainties are in [Phase 3 research](PHASE_3_DATA_SOURCE_RESEARCH.md); component responsibilities are in [Phase 3 architecture](PHASE_3_ARCHITECTURE.md); task acceptance and tests are in [Phase 3 implementation plan](PHASE_3_IMPLEMENTATION_PLAN.md).
 
-## Architecture implications
+## Approval and implementation status
 
-The architecture proposed in [PHASE_3_ARCHITECTURE.md](PHASE_3_ARCHITECTURE.md) remains a good future remote-provider boundary, but implementing its `OutageDataSource`, remote client, DTOs, and refresh coordinator now would be unnecessary complexity because no approved remote provider is ready.
-
-### For the recommended manual MVP
-
-- **`OutageDataSource`:** defer it. Manual data entry is not a remote data source. Do not create a protocol solely to satisfy an abstract architecture diagram. Add it when an approved automated source exists.
-- **Internal schedule models:** `SelectedAddress`, `ScheduleInterval`, `AddressSchedule`, and multiple schedule entries already represent address/date/interval/alternative feed data. The current `ScheduleStatus.unknown` can express unknown intervals. The snapshot lacks explicit provenance and checked time. Add only the minimum metadata the UI needs, such as `sourceKind = userEntered`, `lastVerifiedAt`, and optionally a source label/link. `fetchedAt` should retain its literal meaning (time persisted/fetched) and must not be relabeled as the provider update time.
-- **Schedule completeness:** do not infer `.available` for gaps unless the user marks a complete daily schedule and confirms that omission means power is on. If the source provides only outage periods, render only known outage ranges and unknown elsewhere, or require complete on/off segmentation. The selected rule must be explicit.
-- **`ScheduleStore`:** current atomic JSON App Group storage is sufficient for a single user's local manual schedule. If adding non-optional Codable fields, bump `schemaVersion` and migrate version 1 or decode old snapshots safely. Avoid a second database or backend. A typed save error is optional; the current `Bool` is sufficient to show a general persistence error in a small MVP, though tests should verify failed writes preserve the old file.
-- **User configuration:** add address entry/confirmation, effective schedule date, interval configuration, optional multiple schedule variants, user selection of the applicable variant, and last-verified/source fields. For a multi-feed building, show that the user must verify the applicable feed with the building manager/OSBB; never pick one arbitrarily. Manual entry should be explicitly user-authored and editable.
-- **Error/unavailable states:** distinguish at least `No schedule configured`, `Schedule expired/not checked for current date`, `Unknown applicable feed`, and `Storage unavailable`. Existing empty schedules and `.unknown` can render unavailable, but without a reason/provenance field the app cannot explain why. Preserve a last-known-good prior day only as historical context; do not display it as today's schedule.
-- **Widget:** continue offline-only. It reads the persisted snapshot and labels user-entered data and last-check date (or displays unavailable when no current data exists). Widget reload occurs only after successful save.
-- **Mock scenarios:** retain all existing `MockScheduleFactory` behavior separately from any user-entered schedule. Do not silently seed mock schedules into a live/manual configuration state.
-
-### If a provider becomes approved later
-
-Add the minimal `OutageDataSource` protocol, URLSession client, provider DTOs, validator/mapper, and app refresh coordinator in the main app target. Keep the widget on the shared normalized snapshot. A provider-backed schedule should preserve source identity and provider update time separately from local fetch time, with migration/tests for the existing schema. Keep manual configuration as a fallback only if product explicitly wants that mode.
-
-## Approved Phase 3B scope
-
-- Kyiv City only; the user enters the address manually.
-- Require complete, contiguous intervals from 00:00 to 24:00. The user marks each interval as scheduled availability, outage, or possible outage; gaps are never inferred as availability.
-- Support up to two schedule variants and require the user to select the applicable one.
-- Mark the schedule stale two hours after the user explicitly confirms they checked the official source. Editing alone must not claim a source check.
-- Link to DTEK's official shutdown page for manual lookup. No backend or automated provider integration is included.
-- Keep the widget offline-only; show the schedule only while it is fresh and for its effective date.
-
-No user personal account, API token, or address should be sent to an unapproved third party. Address persistence remains local in App Group storage unless scope/privacy review explicitly changes that.
-
-## Conditions before Phase 3B
-
-### If Phase 3B means manual user-configured schedule MVP
-
-It may start only after explicit approval of this changed scope and decisions above. Implementation must:
-
-1. Label all entered schedules as user-provided and show the last verification date.
-2. Avoid claims of automatic or real-time DTEK data.
-3. Preserve unknown/unavailable intervals and never infer power-on from missing data without confirmation.
-4. Handle multiple schedules without choosing an unverified building feed.
-5. Keep snapshot writes atomic, preserve prior data on save failure, and leave the widget network-free.
-6. Test persistence/schema migration, invalid/overlapping intervals, stale dates, unknown feed selection, and unavailable/storage-failure states.
-
-### If Phase 3B means automatic real-data integration
-
-Do not start until all of the following are met:
-
-1. DTEK or YASNO confirms a supported machine-readable interface and permitted use, or another authoritative source documents the same.
-2. The endpoint is reachable without WAF circumvention and its current response is captured as a sanitized real fixture.
-3. Address-to-schedule mapping is verified for multiple addresses and multi-feed cases.
-4. Status meanings, completeness, update timestamps, timezone behavior, freshness, quotas, and failure semantics are documented.
-5. A real address can be tested with the user/provider's authorization and no invented residential examples.
-
-## Sources and evidence
-
-- [Phase 0 findings](PHASE_0_FINDINGS.md) — live YASNO API/address-resolution fixtures and DTEK direct challenge findings dated 2026-11-07.
-- [Phase 3A research](PHASE_3_DATA_SOURCE_RESEARCH.md) — repeat YASNO and DTEK HTTP checks dated 2026-11-11; group-keyed YASNO API payload and freshness observation.
-- [DTEK Kyiv official shutdown page](https://www.dtek-kem.com.ua/ua/shutdowns?page-limit=25) — address UI; states address schedules are individual, some buildings have two feed schedules, published schedules can change, and directs users to DTEK website/chatbots and Kyiv Digital.
-- [DTEK official Kyiv Digital announcement](https://admin-stage2.dtek-kem.com.ua/ua/news/u-kiyevi-diyut-individualni-grafiki-vidklyuchen-shcho-vazhlivo-znati-kiyanam) — says each address has a personal schedule and identifies DTEK official services/Kyiv Digital.
-- [DTEK chatbot information](https://admin-stage2.dtek-kem.com.ua/ua/chatbot) — official chatbot channel; no public API contract established.
-- [YASNO Kyiv outage page](https://static.yasno.ua/kyiv/outages) — human-facing address lookup and FAQ about two schedules per address; does not document the tested group's API as an integration contract.
-- [YASNO live regions endpoint](https://app.yasno.ua/api/blackout-service/public/shutdowns/addresses/v2/regions) and [planned schedule endpoint](https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages) — publicly accessible responses live-verified as recorded in Phase 3A; no support commitment identified.
-
-## Final recommendation
-
-Approve **user-assisted manual configuration** as the interim MVP if a working widget is needed before an official API is available. Treat its schedule as user-entered and dated, not automatically authoritative. Reject direct YASNO API integration for the current address-accuracy claim; defer DTEK automation pending a supported interface; do not add a backend or third-party scraper.
-
-**Implementation status:** the approved manual MVP is implemented and the iOS Simulator build and unit tests pass. Manual visual verification in Xcode remains outstanding. Automatic DTEK/YASNO integration remains blocked on a supported, verified interface.
+The provider/product decision is approved. This documentation revision does not authorize application-code implementation by itself; implementation remains pending explicit approval under the project workflow. The previously reported SwiftUI `@State` macro-plugin malformed response and unavailable simulator services remain unresolved environment issues, not established application defects. Do not change signing, provisioning, or unrelated Xcode settings to work around them.

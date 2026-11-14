@@ -37,6 +37,34 @@ enum ScheduleStatus: String, Codable, CaseIterable, Hashable {
 
 enum ScheduleSourceKind: String, Codable {
     case userEntered
+    case yasnoGroup
+}
+
+enum ScheduleProvider: String, Codable {
+    case yasno
+}
+
+struct ScheduleGroupIdentity: Codable, Equatable, Hashable {
+    var provider: ScheduleProvider
+    /// Exact provider key, including subgroup notation (for example `19.1`).
+    var identifier: String
+}
+
+enum ProviderFreshness: Equatable {
+    case current
+    case stale
+    case staleWithStrongWarning
+    case unavailable
+    case invalidFutureTimestamp
+
+    static func evaluate(updatedOn: Date?, now: Date) -> ProviderFreshness {
+        guard let updatedOn else { return .unavailable }
+        let age = now.timeIntervalSince(updatedOn)
+        guard age >= 0 else { return .invalidFutureTimestamp }
+        if age <= 6 * 60 * 60 { return .current }
+        if age <= 12 * 60 * 60 { return .stale }
+        return .staleWithStrongWarning
+    }
 }
 
 struct ScheduleInterval: Codable, Equatable, Identifiable {
@@ -54,7 +82,8 @@ struct AddressSchedule: Codable, Equatable, Identifiable {
 
 struct ScheduleSnapshot: Codable, Equatable {
     var schemaVersion: Int
-    var address: SelectedAddress
+    // Optional so group snapshots do not need a fabricated address; legacy snapshots still decode.
+    var address: SelectedAddress?
     var schedules: [AddressSchedule]
     var selectedScheduleID: String
     var scheduleDate: Date
@@ -62,6 +91,12 @@ struct ScheduleSnapshot: Codable, Equatable {
     // Optional so snapshots written before manual schedules remain decodable.
     var sourceKind: ScheduleSourceKind? = nil
     var lastVerifiedAt: Date? = nil
+    // Additive metadata: absent in schema 1 manual snapshots.
+    var groupIdentity: ScheduleGroupIdentity? = nil
+    var sourceUpdatedOn: Date? = nil
+    // Timeline overlays from the separate publication-state file; not part of the last valid schedule.
+    var providerWaitingUpdatedOn: Date? = nil
+    var providerWaitingFetchedAt: Date? = nil
 
     var selectedSchedule: AddressSchedule? {
         schedules.first { $0.id == selectedScheduleID } ?? schedules.first
@@ -73,6 +108,15 @@ struct ScheduleSnapshot: Codable, Equatable {
         guard sourceKind == .userEntered, let lastVerifiedAt else { return false }
         let age = date.timeIntervalSince(lastVerifiedAt)
         return age >= 0 && age <= Self.manualScheduleFreshness
+    }
+
+    var isYasnoGroupSchedule: Bool {
+        sourceKind == .yasnoGroup && groupIdentity?.provider == .yasno
+    }
+
+    func providerFreshness(at date: Date) -> ProviderFreshness {
+        guard isYasnoGroupSchedule else { return .unavailable }
+        return ProviderFreshness.evaluate(updatedOn: sourceUpdatedOn, now: date)
     }
 }
 
@@ -143,5 +187,48 @@ enum ScheduleCalculator {
             return "\(remainder) хв"
         }
         return remainder == 0 ? "\(hours) год" : "\(hours) год \(remainder) хв"
+    }
+}
+
+/// Deterministic policies shared by WidgetKit timeline construction and regression tests.
+enum TimelinePolicy {
+    static func manualExpiry(mode: DisplayScheduleMode, verifiedAt: Date?) -> Date? {
+        guard mode == .manual, let verifiedAt else { return nil }
+        return verifiedAt.addingTimeInterval(ScheduleSnapshot.manualScheduleFreshness)
+    }
+
+    static func dates(
+        for schedule: AddressSchedule?,
+        now: Date,
+        dayEnd: Date,
+        manualStaleAt: Date?
+    ) -> [Date] {
+        var dates: Set<Date> = []
+        if let schedule {
+            for interval in schedule.intervals {
+                if interval.start > now && (manualStaleAt.map { interval.start <= $0 } ?? true) {
+                    dates.insert(interval.start)
+                }
+                if interval.end > now && interval.end < dayEnd
+                    && (manualStaleAt.map { interval.end <= $0 } ?? true) {
+                    dates.insert(interval.end)
+                }
+            }
+        }
+        if let manualStaleAt, manualStaleAt > now {
+            dates.insert(manualStaleAt.addingTimeInterval(1))
+        }
+        return dates.filter { $0 > now }.sorted()
+    }
+
+    static func manualDisplaySnapshot(saved: ScheduleSnapshot?, now: Date) -> ScheduleSnapshot {
+        guard let saved,
+              saved.scheduleDate == KyivTime.dayStart(containing: now),
+              saved.sourceKind == .userEntered,
+              saved.isFreshManualSchedule(at: now),
+              saved.selectedSchedule != nil else {
+            return MockScheduleFactory.unavailableSnapshot(now: now, basedOn: saved)
+        }
+        return saved
     }
 }

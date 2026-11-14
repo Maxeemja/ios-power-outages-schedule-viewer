@@ -3,6 +3,12 @@ import WidgetKit
 
 struct ContentView: View {
     @State private var snapshot: ScheduleSnapshot?
+    @State private var yasnoSnapshot: ScheduleSnapshot?
+    @State private var mode: DisplayScheduleMode = .manual
+    @State private var availableGroups: [String] = []
+    @State private var selectedGroup = ""
+    @State private var isRefreshing = false
+    @State private var yasnoMessage: String?
     @State private var sharedStorageAvailable: Bool?
     @State private var showingEditor = false
     @State private var confirmingVerification = false
@@ -15,18 +21,31 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Мій графік")
+                        Text(mode == .manual ? "Мій графік" : "Графік YASNO")
                             .font(.largeTitle.bold())
                             .foregroundStyle(.white)
-                        Text("Ручні дані · Київ")
+                        Text(mode == .manual ? "Ручні дані · Київ" : "Груповий графік · Київ")
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.58))
                     }
 
-                    if let snapshot {
+                    Picker("Джерело графіка", selection: $mode) {
+                        Text("Вручну").tag(DisplayScheduleMode.manual)
+                        Text("YASNO").tag(DisplayScheduleMode.yasno)
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: mode) { _, newMode in
+                        store.activeMode = newMode
+                        WidgetCenter.shared.reloadTimelines(ofKind: OutageWidgetConstants.kind)
+                        if newMode == .yasno { Task { await loadGroups() } }
+                    }
+
+                    if mode == .manual, let snapshot {
                         configuredSchedule(snapshot)
-                    } else {
+                    } else if mode == .manual {
                         emptyState
+                    } else {
+                        yasnoScheduleView
                     }
 
                     if sharedStorageAvailable == false || storageError {
@@ -38,6 +57,7 @@ struct ContentView: View {
                         .foregroundStyle(.orange)
                     }
 
+                    if mode == .manual {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "info.circle.fill").foregroundStyle(.mint)
                         Text("Графік введено вручну й він не оновлюється автоматично. Він показує лише запланований стан, а не фактичну наявність електроенергії.")
@@ -46,6 +66,7 @@ struct ContentView: View {
                     }
                     .padding(16)
                     .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+                    }
                 }
                 .padding(20)
             }
@@ -65,6 +86,134 @@ struct ContentView: View {
         }
     }
 
+    private var yasnoScheduleView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Оберіть групу безпосередньо зі списку, отриманого від YASNO.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.7))
+            if availableGroups.isEmpty {
+                Button("Завантажити доступні групи") { Task { await loadGroups() } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.mint)
+            } else {
+                Picker("Група", selection: $selectedGroup) {
+                    Text("Виберіть групу").tag("")
+                    ForEach(availableGroups, id: \.self) { group in Text(group).tag(group) }
+                }
+                .onChange(of: selectedGroup) { _, value in
+                    guard !value.isEmpty else { return }
+                    store.selectedYasnoGroup = value
+                    yasnoSnapshot = displayedYasnoSnapshot(groupID: value)
+                    WidgetCenter.shared.reloadTimelines(ofKind: OutageWidgetConstants.kind)
+                }
+                Button {
+                    Task { await refreshYasno() }
+                } label: {
+                    Label(isRefreshing ? "Оновлення…" : "Оновити графік", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent).tint(.mint).disabled(isRefreshing || selectedGroup.isEmpty)
+            }
+            if let yasnoMessage {
+                Text(yasnoMessage).font(.footnote).foregroundStyle(.orange)
+            }
+            if let yasnoSnapshot {
+                WidgetCard(snapshot: yasnoSnapshot, now: .now, compact: false).frame(height: 225)
+                Text("Група \(yasnoSnapshot.groupIdentity?.identifier ?? "—")")
+                    .font(.headline).foregroundStyle(.white)
+                if selectedGroup.isEmpty {
+                    Text("Показано останній збережений графік цієї групи; виберіть доступну групу для наступного оновлення.")
+                        .font(.footnote).foregroundStyle(.orange)
+                }
+                Text(yasnoFreshnessLabel(yasnoSnapshot))
+                    .font(.footnote)
+                    .foregroundStyle(yasnoSnapshot.providerFreshness(at: .now) == .current ? .mint : .orange)
+            } else if !selectedGroup.isEmpty, let waiting = store.loadYasnoWaiting(groupID: selectedGroup) {
+                Text("YASNO ще не опублікував графік для групи \(selectedGroup). Перевірено о \(KyivTime.timeString(waiting.fetchedAt)).")
+                    .font(.subheadline).foregroundStyle(.orange)
+            } else {
+                Text("Немає збереженого графіка для вибраної групи.")
+                    .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+            }
+            Text("Group schedule; actual outages at your building or apartment may differ.")
+                .font(.footnote).foregroundStyle(.white.opacity(0.68))
+        }
+        .padding(18)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    @MainActor private func loadGroups() async {
+        do {
+            let groups = try await YasnoScheduleSource().fetchAvailableGroupIDs()
+            availableGroups = groups
+            if let saved = store.selectedYasnoGroup {
+                selectedGroup = groups.contains(saved) ? saved : ""
+                if !groups.contains(saved) {
+                    yasnoMessage = "Обрану раніше групу більше не надано. Виберіть доступну групу вручну."
+                }
+            } else {
+                selectedGroup = ""
+            }
+        } catch {
+            yasnoMessage = "Не вдалося завантажити групи. Перевірте з’єднання та спробуйте ще раз."
+        }
+    }
+
+    @MainActor private func refreshYasno() async {
+        guard availableGroups.contains(selectedGroup) else {
+            yasnoMessage = "Вибрана група відсутня у відповіді YASNO."
+            return
+        }
+        isRefreshing = true
+        store.selectedYasnoGroup = selectedGroup
+        defer { isRefreshing = false }
+        do {
+            switch try await YasnoScheduleSource().fetchSchedule(groupID: selectedGroup, fetchedAt: .now) {
+            case let .schedule(updated):
+                guard store.saveYasno(updated) else { throw YasnoScheduleError.invalidResponse }
+                yasnoSnapshot = updated
+                yasnoMessage = nil
+                WidgetCenter.shared.reloadTimelines(ofKind: OutageWidgetConstants.kind)
+            case let .waiting(groupID, updatedOn):
+                guard store.saveYasnoWaiting(groupID: groupID, updatedOn: updatedOn, fetchedAt: .now) else {
+                    throw YasnoScheduleError.invalidResponse
+                }
+                WidgetCenter.shared.reloadTimelines(ofKind: OutageWidgetConstants.kind)
+                yasnoMessage = "YASNO ще не опублікував графік для цієї групи. Збережений графік не змінено."
+            }
+        } catch YasnoScheduleError.stale(.staleWithStrongWarning) {
+            yasnoMessage = "Дані YASNO застаріли понад 12 годин. Збережений графік не змінено."
+        } catch YasnoScheduleError.stale(_) {
+            yasnoMessage = "Дані YASNO застарілі. Збережений графік не змінено."
+        } catch {
+            yasnoMessage = "Не вдалося оновити графік. Показуємо останні збережені дані."
+        }
+    }
+
+    private func yasnoFreshnessLabel(_ snapshot: ScheduleSnapshot) -> String {
+        if let waitingAt = snapshot.providerWaitingFetchedAt, waitingAt > snapshot.fetchedAt {
+            return "YASNO ще не опублікував графік після останнього оновлення."
+        }
+        guard let updatedOn = snapshot.sourceUpdatedOn else { return "Немає часу оновлення від провайдера" }
+        let time = KyivTime.timeString(updatedOn)
+        switch snapshot.providerFreshness(at: .now) {
+        case .current: return "Актуально · оновлено YASNO о \(time)"
+        case .stale: return "Застаріло · дані YASNO о \(time)"
+        case .staleWithStrongWarning: return "Сильно застаріло · дані YASNO о \(time)"
+        case .unavailable: return "Немає даних про актуальність"
+        case .invalidFutureTimestamp: return "Час оновлення YASNO некоректний"
+        }
+    }
+
+    private func displayedYasnoSnapshot(groupID: String) -> ScheduleSnapshot? {
+        guard var snapshot = store.loadYasno(groupID: groupID),
+              let waiting = store.loadYasnoWaiting(groupID: groupID),
+              waiting.fetchedAt > snapshot.fetchedAt else { return store.loadYasno(groupID: groupID) }
+        snapshot.providerWaitingUpdatedOn = waiting.updatedOn
+        snapshot.providerWaitingFetchedAt = waiting.fetchedAt
+        return snapshot
+    }
+
     @ViewBuilder
     private func configuredSchedule(_ snapshot: ScheduleSnapshot) -> some View {
         let preview = snapshot.isFreshManualSchedule(at: .now)
@@ -77,7 +226,7 @@ struct ContentView: View {
                 .frame(height: 225)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("\(snapshot.address.city), \(snapshot.address.displayName)")
+                Text("\(snapshot.address?.city ?? "Київ"), \(snapshot.address?.displayName ?? "")")
                     .font(.headline)
                     .foregroundStyle(.white)
                 Text(freshnessLabel(snapshot))
@@ -166,15 +315,18 @@ struct ContentView: View {
                 var updated = snapshot
                 updated.selectedScheduleID = id
                 updated.fetchedAt = .now
-                save(updated)
+                _ = save(updated)
             }
         )
     }
 
     private func restore() {
-        guard let saved = store.load(), saved.sourceKind == .userEntered else { return }
-        snapshot = saved
-        sharedStorageAvailable = true
+        mode = store.activeMode
+        snapshot = store.loadManual()
+        selectedGroup = store.selectedYasnoGroup ?? ""
+        yasnoSnapshot = displayedYasnoSnapshot(groupID: selectedGroup)
+        sharedStorageAvailable = snapshot != nil || yasnoSnapshot != nil
+        if mode == .yasno { Task { await loadGroups() } }
     }
 
     private func save(_ updated: ScheduleSnapshot) -> Bool {
@@ -247,8 +399,8 @@ private struct ManualScheduleEditor: View {
 
     init(snapshot: ScheduleSnapshot?, onSave: @escaping (ScheduleSnapshot) -> Bool) {
         self.onSave = onSave
-        _street = State(initialValue: snapshot?.address.street ?? "")
-        _buildingNumber = State(initialValue: snapshot?.address.buildingNumber ?? "")
+        _street = State(initialValue: snapshot?.address?.street ?? "")
+        _buildingNumber = State(initialValue: snapshot?.address?.buildingNumber ?? "")
         _scheduleDate = State(initialValue: snapshot?.scheduleDate ?? KyivTime.dayStart(containing: .now))
         let initialSchedules = snapshot?.schedules.map(Self.makeDraft)
             ?? [ScheduleDraft(id: UUID().uuidString, displayLabel: "Графік 1", segments: [ScheduleSegmentDraft(endMinute: 1440, status: .unknown)])]
