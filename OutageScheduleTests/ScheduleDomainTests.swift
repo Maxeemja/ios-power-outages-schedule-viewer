@@ -235,6 +235,32 @@ final class ScheduleDomainTests: XCTestCase {
         XCTAssertEqual(store.loadYasno()?.groupIdentity?.identifier, "19.1")
     }
 
+    func testSimulatorAppGroupPersistsScheduleBetweenStoreInstances() throws {
+        let writer = ScheduleStore()
+        let reader = ScheduleStore()
+        let groupID = "phase31-\(UUID().uuidString)"
+        let container = try XCTUnwrap(FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: ScheduleStore.appGroupIdentifier
+        ))
+        let encodedID = Data(groupID.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let persistedFile = container.appendingPathComponent("yasno-\(encodedID).json")
+        defer { try? FileManager.default.removeItem(at: persistedFile) }
+
+        let fetchedAt = ISO8601DateFormatter().date(from: "2026-11-14T20:52:18Z")!
+        guard case var .schedule(snapshot) = try YasnoScheduleMapper.map(
+            data: liveScheduleFixture(), groupID: "19.1", fetchedAt: fetchedAt
+        ) else {
+            return XCTFail("Expected schedule from captured live response")
+        }
+        snapshot.groupIdentity = ScheduleGroupIdentity(provider: .yasno, identifier: groupID)
+
+        XCTAssertTrue(writer.saveYasno(snapshot))
+        XCTAssertEqual(reader.loadYasno(groupID: groupID), snapshot)
+    }
+
     func testOlderYasnoPayloadCannotReplaceLastKnownGoodSnapshot() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -279,6 +305,42 @@ final class ScheduleDomainTests: XCTestCase {
             return XCTFail("Expected mapped fixture schedule")
         }
         XCTAssertEqual(snapshot.groupIdentity?.identifier, "19.1")
+    }
+
+    func testYasnoLiveCaptureResolvesKyivAndMapsCurrentWireFormat() async throws {
+        let liveRegions = try Data(contentsOf: XCTUnwrap(Bundle(for: Self.self).url(
+            forResource: "yasno-live-regions", withExtension: "json"
+        )))
+        let liveSchedule = try Data(contentsOf: XCTUnwrap(Bundle(for: Self.self).url(
+            forResource: "yasno-live-planned-outages", withExtension: "json"
+        )))
+        var requests: [URL] = []
+        let session = stubSession { request in
+            let url = try XCTUnwrap(request.url)
+            requests.append(url)
+            if url.path.hasSuffix("/addresses/v2/regions") {
+                return (200, "application/json", liveRegions)
+            }
+            return (200, "application/json", liveSchedule)
+        }
+        let source = YasnoScheduleSource(
+            session: session,
+            regionsEndpoint: URL(string: "https://app.yasno.ua/test/addresses/v2/regions")!
+        )
+        let fetchedAt = ISO8601DateFormatter().date(from: "2026-11-14T20:52:18Z")!
+
+        let groupIDs = try await source.fetchAvailableGroupIDs()
+        XCTAssertEqual(groupIDs, ["19.1"])
+        guard case let .schedule(snapshot) = try await source.fetchSchedule(groupID: "19.1", fetchedAt: fetchedAt) else {
+            return XCTFail("Expected schedule from captured live YASNO response")
+        }
+
+        XCTAssertEqual(snapshot.groupIdentity?.identifier, "19.1")
+        XCTAssertEqual(snapshot.scheduleDate, KyivTime.dayStart(containing: fetchedAt))
+        XCTAssertEqual(snapshot.sourceUpdatedOn, ISO8601DateFormatter().date(from: "2026-11-14T18:30:02Z"))
+        XCTAssertEqual(snapshot.selectedSchedule?.intervals.map(\.status), [.available, .outage, .available, .outage, .available])
+        XCTAssertTrue(requests.contains { $0.path == "/test/addresses/v2/regions" })
+        XCTAssertTrue(requests.contains { $0.path == "/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages" })
     }
 
     func testYasnoClientRejectsHTTPAndWrongContentType() async throws {
@@ -357,6 +419,13 @@ final class ScheduleDomainTests: XCTestCase {
 
     private func yasnoFixture() throws -> Data {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "yasno-planned-outages", withExtension: "json"))
+        return try Data(contentsOf: url)
+    }
+
+    private func liveScheduleFixture() throws -> Data {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(
+            forResource: "yasno-live-planned-outages", withExtension: "json"
+        ))
         return try Data(contentsOf: url)
     }
 

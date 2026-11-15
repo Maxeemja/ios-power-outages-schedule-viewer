@@ -325,7 +325,7 @@ struct ContentView: View {
         snapshot = store.loadManual()
         selectedGroup = store.selectedYasnoGroup ?? ""
         yasnoSnapshot = displayedYasnoSnapshot(groupID: selectedGroup)
-        sharedStorageAvailable = snapshot != nil || yasnoSnapshot != nil
+        sharedStorageAvailable = store.isSharedContainerAvailable
         if mode == .yasno { Task { await loadGroups() } }
     }
 

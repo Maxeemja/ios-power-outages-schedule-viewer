@@ -1,0 +1,67 @@
+{
+  "19.1": {
+    "today": {
+      "slots": [
+        {
+          "start": 0,
+          "end": 390,
+          "type": "NotPlanned"
+        },
+        {
+          "start": 390,
+          "end": 720,
+          "type": "Definite"
+        },
+        {
+          "start": 720,
+          "end": 870,
+          "type": "NotPlanned"
+        },
+        {
+          "start": 870,
+          "end": 1290,
+          "type": "Definite"
+        },
+        {
+          "start": 1290,
+          "end": 1440,
+          "type": "NotPlanned"
+        }
+      ],
+      "date": "2026-11-14T00:00:00+02:00",
+      "status": "ScheduleApplies"
+    },
+    "tomorrow": {
+      "slots": [
+        {
+          "start": 0,
+          "end": 300,
+          "type": "NotPlanned"
+        },
+        {
+          "start": 300,
+          "end": 510,
+          "type": "Definite"
+        },
+        {
+          "start": 510,
+          "end": 930,
+          "type": "NotPlanned"
+        },
+        {
+          "start": 930,
+          "end": 1140,
+          "type": "Definite"
+        },
+        {
+          "start": 1140,
+          "end": 1440,
+          "type": "NotPlanned"
+        }
+      ],
+      "date": "2026-11-15T00:00:00+02:00",
+      "status": "ScheduleApplies"
+    },
+    "updatedOn": "2026-11-14T18:30:02+00:00"
+  }
+}

@@ -28,6 +28,8 @@
 		100000000000000000000013 /* YasnoScheduleSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* YasnoScheduleSource.swift */; };
 		100000000000000000000014 /* yasno-planned-outages.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* yasno-planned-outages.json */; };
 		100000000000000000000015 /* YasnoScheduleSource.swift in Tests */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* YasnoScheduleSource.swift */; };
+		100000000000000000000016 /* yasno-live-regions.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* yasno-live-regions.json */; };
+		100000000000000000000017 /* yasno-live-planned-outages.json in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* yasno-live-planned-outages.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -79,6 +81,8 @@
 		20000000000000000000000F /* OutageScheduleWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OutageScheduleWidget.entitlements; sourceTree = "<group>"; };
 		200000000000000000000013 /* YasnoScheduleSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YasnoScheduleSource.swift; sourceTree = "<group>"; };
 		200000000000000000000014 /* yasno-planned-outages.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Fixtures/yasno-planned-outages.json; sourceTree = "<group>"; };
+		200000000000000000000015 /* yasno-live-regions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Fixtures/yasno-live-regions.json; sourceTree = "<group>"; };
+		200000000000000000000016 /* yasno-live-planned-outages.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Fixtures/yasno-live-planned-outages.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,6 +146,8 @@
 			children = (
 				200000000000000000000009 /* ScheduleDomainTests.swift */,
 				200000000000000000000014 /* yasno-planned-outages.json */,
+				200000000000000000000015 /* yasno-live-regions.json */,
+				200000000000000000000016 /* yasno-live-planned-outages.json */,
 			);
 			path = OutageScheduleTests;
 			sourceTree = "<group>";
@@ -329,6 +335,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000014 /* yasno-planned-outages.json in Resources */,
+				100000000000000000000016 /* yasno-live-regions.json in Resources */,
+				100000000000000000000017 /* yasno-live-planned-outages.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

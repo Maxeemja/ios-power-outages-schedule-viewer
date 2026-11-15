@@ -35,7 +35,7 @@ struct WidgetCard: View {
     private var smallLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(snapshot.isYasnoGroupSchedule ? "Група YASNO" : (snapshot.address?.city ?? "Київ"))
+                Text(snapshot.isYasnoGroupSchedule ? "YASNO" : (snapshot.address?.city ?? "Київ"))
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -51,7 +51,7 @@ struct WidgetCard: View {
                 .padding(.top, 2)
 
             if snapshot.isYasnoGroupSchedule {
-                Text("Group schedule; actual outages at your building or apartment may differ.")
+                Text("Group-level schedule; actual outages may differ.")
                     .font(.system(size: 7, weight: .medium))
                     .foregroundStyle(secondaryText)
                     .lineLimit(2)
@@ -156,7 +156,7 @@ struct WidgetCard: View {
                 unavailableTimeline
             }
             if snapshot.isYasnoGroupSchedule {
-                Text("Group schedule; actual outages at your building or apartment may differ.")
+                Text("Group-level schedule; actual outages may differ.")
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(secondaryText)
                     .lineLimit(1)
@@ -167,12 +167,21 @@ struct WidgetCard: View {
     private var statusLabel: some View {
         HStack(spacing: 5) {
             Circle().fill(statusColor(currentStatus)).frame(width: 7, height: 7)
-            Text(currentStatus.shortTitle)
+            Text(compact ? compactStatusTitle : currentStatus.shortTitle)
                 .font(.system(size: compact ? 9 : 11, weight: .bold))
                 .lineLimit(1)
                 .foregroundStyle(statusColor(currentStatus))
         }
         .fixedSize()
+    }
+
+    private var compactStatusTitle: String {
+        switch currentStatus {
+        case .available: "Світло"
+        case .outage: "Відкл."
+        case .possible: "Можл."
+        case .unknown: "Немає"
+        }
     }
 
     private var timeline: some View {

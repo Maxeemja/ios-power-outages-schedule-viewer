@@ -28,6 +28,10 @@ struct ScheduleStore {
         nonmutating set { defaults?.set(newValue.rawValue, forKey: "active-schedule-mode") }
     }
 
+    var isSharedContainerAvailable: Bool {
+        defaults != nil && containerURLProvider() != nil
+    }
+
     var selectedYasnoGroup: String? {
         get { defaults?.string(forKey: "selected-yasno-group") }
         nonmutating set {

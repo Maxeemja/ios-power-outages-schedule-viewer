@@ -105,3 +105,14 @@ The simulator app and WidgetKit extension build and all 25 automated tests pass.
 - [ ] Runtime YASNO and shared-storage behavior verified on device/simulator.
 - [ ] Small and Medium widgets visually inspected in all relevant states.
 - [ ] Phase 3 fully accepted.
+
+## Phase 3.1 follow-up — 2026-11-14
+
+See [PHASE_3_1_VERIFICATION.md](PHASE_3_1_VERIFICATION.md) for the execution checklist, live YASNO HTTP evidence and sanitized fixtures, simulator app-to-widget exchange, rendered widget screenshots, full regression results, and limitations.
+
+- Live YASNO endpoint compatibility against current accessible responses: **PASS**.
+- App and widget App Group identifier/configuration parity: **PASS**. Real simulator app-process write/read and separate WidgetKit extension read/render: **PASS**.
+- WidgetKit timeline reload request and resulting live YASNO display: **PASS**; actual reload latency remains under system control.
+- Rendered Small/Medium widget inspection: **PASS** for live schedules in light and dark and unavailable/stale examples in light. Upcoming countdown-state visual check remains blocked; see the Phase 3.1 report.
+- Clean-install app empty-state UX: inspected; corrected the false App Group storage warning.
+- Full simulator app/widget build and XCTest suite: **PASS**, 27 tests, 0 failures. `git diff --check`: **PASS**.
